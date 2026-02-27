@@ -1,0 +1,23 @@
+.ghost-image-editor-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999999;
+}
+
+.editor-box {
+  background: #ffffff;
+  padding: 20px;
+  max-width: 85%;
+  border-radius: 8px;
+}
+
+.editor-controls {
+  margin-top: 15px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
