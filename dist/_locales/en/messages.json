@@ -1,0 +1,12 @@
+{
+  "extensionName": {
+    "message": "Image Editor for Ghost CMS"
+  },
+  "extensionDescription": {
+    "message": "Crop and optimize images directly inside Ghost Admin before upload."
+  },
+  "save": { "message": "Save" },
+  "cancel": { "message": "Cancel" },
+  "format": { "message": "Format" },
+  "contextEdit": { "message": "Edit with Ghost Image Editor" }
+}
