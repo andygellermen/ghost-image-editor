@@ -1,0 +1,9 @@
+{
+  "name": "ghost-image-editor",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "copy:manifest": "node scripts/copy-manifest.mjs",
+    "build": "npm run copy:manifest"
+  }
+}
