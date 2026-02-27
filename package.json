@@ -1,0 +1,16 @@
+{
+  "name": "ghost-image-editor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "cropperjs": "1.6.2"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
