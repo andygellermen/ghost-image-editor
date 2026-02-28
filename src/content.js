@@ -51,7 +51,7 @@ function attachUploadListener() {
       event.preventDefault();
 
       const reader = new FileReader();
-      reader.onload = () => openEditor(reader.result, input, file);
+      reader.onload = () => window.openEditor(reader.result, input, file);
       reader.readAsDataURL(file);
     });
   });
