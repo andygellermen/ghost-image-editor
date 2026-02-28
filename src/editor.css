@@ -1,7 +1,7 @@
 .ghost-image-editor-modal {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,.85);
+  background: rgba(0, 0, 0, 0.85);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11,8 +11,17 @@
 .editor-box {
   background: #ffffff;
   padding: 20px;
-  max-width: 85%;
+  width: min(1000px, 90vw);
   border-radius: 8px;
+}
+
+.editor-image-wrapper {
+  height: min(70vh, 700px);
+}
+
+.editor-image {
+  display: block;
+  max-width: 100%;
 }
 
 .editor-controls {
@@ -20,4 +29,18 @@
   display: flex;
   gap: 10px;
   justify-content: flex-end;
+}
+
+.editor-controls button {
+  border: 1px solid #d9d9d9;
+  background: #f8f8f8;
+  color: #222;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.editor-controls button[data-action="apply"] {
+  background: #15171a;
+  color: #fff;
 }

@@ -2,7 +2,7 @@
   "name": "__MSG_extensionName__",
   "description": "__MSG_extensionDescription__",
   "default_locale": "en",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "manifest_version": 3,
   "permissions": [
     "contextMenus",
@@ -17,9 +17,16 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*/ghost/*"],
-      "js": ["content.js", "editor.js"],
-      "css": ["editor.css"]
+      "matches": [
+        "*://*/ghost/*"
+      ],
+      "js": [
+        "content.js",
+        "editor.js"
+      ],
+      "css": [
+        "editor.css"
+      ]
     }
   ]
 }

@@ -1,1 +1,4 @@
-chrome.runtime.onInstalled.addListener(()=>{chrome.contextMenus.create({id:"editImage",title:chrome.i18n.getMessage("contextEdit"),contexts:["image"]})});chrome.contextMenus.onClicked.addListener((e,t)=>{e.menuItemId==="editImage"&&chrome.scripting.executeScript({target:{tabId:t.id},func:n=>window.openEditorFromContext(n),args:[e.srcUrl]})});
+const manifestVersion=chrome.runtime.getManifest().version;
+console.info(`[ghost-image-editor] background loaded v${manifestVersion}`);
+chrome.runtime.onInstalled.addListener(()=>{chrome.contextMenus.create({id:"editImage",title:chrome.i18n.getMessage("contextEdit"),contexts:["image"]})});
+chrome.contextMenus.onClicked.addListener((info,tab)=>{if(info.menuItemId!=="editImage"||!(tab!=null&&tab.id)||!info.srcUrl)return;chrome.tabs.sendMessage(tab.id,{type:"OPEN_EDITOR_FROM_CONTEXT",imageSrc:info.srcUrl})});
