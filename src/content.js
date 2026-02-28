@@ -1,3 +1,7 @@
+const EXTENSION_LOG_PREFIX = "[ghost-image-editor]";
+
+console.info(`${EXTENSION_LOG_PREFIX} content script loaded`, chrome.runtime.getManifest().version);
+
 function attachUploadListener() {
   const inputs = document.querySelectorAll('input[type="file"]');
 
@@ -13,7 +17,11 @@ function attachUploadListener() {
 
       const file = event.target.files?.[0];
       if (!file || !file.type.startsWith("image/")) return;
-      if (typeof window.openEditor !== "function") return;
+      const openEditor = globalThis.openEditor || window.openEditor;
+      if (typeof openEditor !== "function") {
+        console.warn(`${EXTENSION_LOG_PREFIX} openEditor hook is missing; skipping crop modal`);
+        return;
+      }
 
       event.preventDefault();
 
@@ -26,9 +34,14 @@ function attachUploadListener() {
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type !== "OPEN_EDITOR_FROM_CONTEXT") return;
-  if (typeof window.openEditorFromContext !== "function") return;
+  const openEditorFromContext = globalThis.openEditorFromContext || window.openEditorFromContext;
+  if (typeof openEditorFromContext === "function") {
+    openEditorFromContext(message.imageSrc);
+    return;
+  }
 
-  window.openEditorFromContext(message.imageSrc);
+  console.warn(`${EXTENSION_LOG_PREFIX} openEditorFromContext hook is missing; opening image URL directly`);
+  window.open(message.imageSrc, "_blank", "noopener,noreferrer");
 });
 
 const observer = new MutationObserver(() => attachUploadListener());
