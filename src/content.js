@@ -1,18 +1,25 @@
 function attachUploadListener() {
   const inputs = document.querySelectorAll('input[type="file"]');
 
-  inputs.forEach(input => {
+  inputs.forEach((input) => {
     if (input.dataset.editorAttached) return;
     input.dataset.editorAttached = "true";
 
-    input.addEventListener("change", (e) => {
-      const file = e.target.files[0];
+    input.addEventListener("change", (event) => {
+      if (input.dataset.editorApplying === "true") {
+        delete input.dataset.editorApplying;
+        return;
+      }
+
+      const file = event.target.files?.[0];
       if (!file || !file.type.startsWith("image/")) return;
 
-      e.preventDefault();
+      if (typeof window.openEditor !== "function") return;
+
+      event.preventDefault();
 
       const reader = new FileReader();
-      reader.onload = () => openEditor(reader.result, input, file);
+      reader.onload = () => window.openEditor(reader.result, input, file);
       reader.readAsDataURL(file);
     });
   });
