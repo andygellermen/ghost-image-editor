@@ -1,3 +1,7 @@
+const manifestVersion = chrome.runtime.getManifest().version;
+
+console.info(`[ghost-image-editor] background loaded v${manifestVersion}`);
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "editImage",

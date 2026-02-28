@@ -17,9 +17,16 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*/ghost/*"],
-      "js": ["content.js", "editor.js"],
-      "css": ["editor.css"]
+      "matches": [
+        "*://*/ghost/*"
+      ],
+      "js": [
+        "content.js",
+        "editor.js"
+      ],
+      "css": [
+        "editor.css"
+      ]
     }
   ]
 }

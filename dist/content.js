@@ -1,1 +1,27 @@
-const n="[ghost-image-editor]";console.info(`${n} content script loaded`,chrome.runtime.getManifest().version);function a(){document.querySelectorAll('input[type="file"]').forEach(e=>{e.dataset.editorAttached||(e.dataset.editorAttached="true",e.addEventListener("change",i=>{var d;if(e.dataset.editorApplying==="true"){delete e.dataset.editorApplying;return}const o=(d=i.target.files)==null?void 0:d[0];if(!o||!o.type.startsWith("image/"))return;if(typeof(globalThis.openEditor||window.openEditor)!="function"){console.warn(`${n} openEditor hook is missing; skipping crop modal`);return}i.preventDefault();const r=new FileReader;r.onload=()=>window.openEditor(r.result,e,o),r.readAsDataURL(o)}))})}chrome.runtime.onMessage.addListener(t=>{if((t==null?void 0:t.type)!=="OPEN_EDITOR_FROM_CONTEXT")return;const e=globalThis.openEditorFromContext||window.openEditorFromContext;if(typeof e=="function"){e(t.imageSrc);return}console.warn(`${n} openEditorFromContext hook is missing; opening image URL directly`),window.open(t.imageSrc,"_blank","noopener,noreferrer")});const s=new MutationObserver(()=>a());s.observe(document.body,{childList:!0,subtree:!0});a();
+const EXTENSION_LOG_PREFIX="[ghost-image-editor]";
+const manifestVersion=chrome.runtime.getManifest().version;
+console.info(`${EXTENSION_LOG_PREFIX} content script loaded v${manifestVersion}`);
+
+if(!window.__ghostImageEditorBridgeReady){
+  window.__ghostImageEditorBridgeReady=true;
+  const bridgeScript=document.createElement("script");
+  bridgeScript.textContent=`
+    window.openEditorFromContext = window.openEditorFromContext || function (imageSrc) {
+      window.postMessage({ source: "ghost-image-editor", type: "OPEN_EDITOR_FROM_CONTEXT", imageSrc }, "*");
+    };
+  `;
+  (document.head||document.documentElement).appendChild(bridgeScript);
+  bridgeScript.remove();
+}
+
+window.addEventListener("message",event=>{
+  if(event.source!==window)return;
+  if(event.data?.source!=="ghost-image-editor")return;
+  if(event.data?.type!=="OPEN_EDITOR_FROM_CONTEXT")return;
+  const openEditorFromContext=globalThis.openEditorFromContext||window.openEditorFromContext;
+  if(typeof openEditorFromContext==="function") openEditorFromContext(event.data.imageSrc);
+});
+
+function n(){document.querySelectorAll('input[type="file"]').forEach(e=>{if(e.dataset.editorAttached)return;e.dataset.editorAttached="true",e.addEventListener("change",t=>{if(e.dataset.editorApplying==="true"){delete e.dataset.editorApplying;return}const o=t.target.files?.[0];if(!o||!o.type.startsWith("image/"))return;const r=globalThis.openEditor||window.openEditor;if(typeof r!=="function"){console.warn(`${EXTENSION_LOG_PREFIX} openEditor hook is missing; skipping crop modal`);return}t.preventDefault();const i=new FileReader;i.onload=()=>r(i.result,e,o),i.readAsDataURL(o)})})}
+chrome.runtime.onMessage.addListener(e=>{if(e?.type!=="OPEN_EDITOR_FROM_CONTEXT")return;const t=globalThis.openEditorFromContext||window.openEditorFromContext;if(typeof t==="function"){t(e.imageSrc);return}console.warn(`${EXTENSION_LOG_PREFIX} openEditorFromContext hook is missing; opening image URL directly`),window.open(e.imageSrc,"_blank","noopener,noreferrer")});
+const a=new MutationObserver(()=>n());a.observe(document.body,{childList:!0,subtree:!0});n();
