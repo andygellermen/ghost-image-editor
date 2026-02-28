@@ -45,7 +45,7 @@ function updateInputWithFile(input, file) {
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-window.openEditor = function openEditor(imageSrc, input, originalFile) {
+globalThis.openEditor = function openEditor(imageSrc, input, originalFile) {
   const { modal, image, cancelButton, applyButton } = createModal(imageSrc);
   const cropper = new Cropper(image, {
     viewMode: 1,
@@ -91,6 +91,6 @@ window.openEditor = function openEditor(imageSrc, input, originalFile) {
   });
 };
 
-window.openEditorFromContext = function openEditorFromContext(imageSrc) {
+globalThis.openEditorFromContext = function openEditorFromContext(imageSrc) {
   window.open(imageSrc, "_blank", "noopener,noreferrer");
 };

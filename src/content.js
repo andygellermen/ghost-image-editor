@@ -13,7 +13,6 @@ function attachUploadListener() {
 
       const file = event.target.files?.[0];
       if (!file || !file.type.startsWith("image/")) return;
-
       if (typeof window.openEditor !== "function") return;
 
       event.preventDefault();
@@ -24,6 +23,13 @@ function attachUploadListener() {
     });
   });
 }
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type !== "OPEN_EDITOR_FROM_CONTEXT") return;
+  if (typeof window.openEditorFromContext !== "function") return;
+
+  window.openEditorFromContext(message.imageSrc);
+});
 
 const observer = new MutationObserver(() => attachUploadListener());
 observer.observe(document.body, { childList: true, subtree: true });
