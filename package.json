@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build && node scripts/verify-extension-build.mjs"
   },
   "dependencies": {
     "cropperjs": "1.6.2"
