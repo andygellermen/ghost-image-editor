@@ -7,11 +7,10 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "editImage") {
-    chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: (src) => window.openEditorFromContext(src),
-      args: [info.srcUrl]
-    });
-  }
+  if (info.menuItemId !== "editImage" || !tab?.id || !info.srcUrl) return;
+
+  chrome.tabs.sendMessage(tab.id, {
+    type: "OPEN_EDITOR_FROM_CONTEXT",
+    imageSrc: info.srcUrl
+  });
 });
