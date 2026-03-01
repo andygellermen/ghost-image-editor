@@ -4,29 +4,6 @@ const manifestVersion = chrome.runtime.getManifest().version;
 console.info(`${EXTENSION_LOG_PREFIX} content script loaded v${manifestVersion}`);
 
 
-if (!window.__ghostImageEditorBridgeReady) {
-  window.__ghostImageEditorBridgeReady = true;
-  const bridgeScript = document.createElement("script");
-  bridgeScript.textContent = `
-    window.openEditorFromContext = window.openEditorFromContext || function (imageSrc) {
-      window.postMessage({ source: "ghost-image-editor", type: "OPEN_EDITOR_FROM_CONTEXT", imageSrc }, "*");
-    };
-  `;
-  (document.head || document.documentElement).appendChild(bridgeScript);
-  bridgeScript.remove();
-}
-
-window.addEventListener("message", (event) => {
-  if (event.source !== window) return;
-  if (event.data?.source !== "ghost-image-editor") return;
-  if (event.data?.type !== "OPEN_EDITOR_FROM_CONTEXT") return;
-
-  const openEditorFromContext = globalThis.openEditorFromContext || window.openEditorFromContext;
-  if (typeof openEditorFromContext === "function") {
-    openEditorFromContext(event.data.imageSrc);
-  }
-});
-
 function attachUploadListener() {
   const inputs = document.querySelectorAll('input[type="file"]');
 
@@ -49,11 +26,13 @@ function attachUploadListener() {
       }
 
       event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
 
       const reader = new FileReader();
       reader.onload = () => window.openEditor(reader.result, input, file);
       reader.readAsDataURL(file);
-    });
+    }, true);
   });
 }
 
