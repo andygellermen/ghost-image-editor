@@ -57,6 +57,24 @@ function createModal(imageSrc, options = {}) {
           </select>
         </label>
       </div>
+      <div class="editor-settings">
+        <label>
+          Width
+          <input type="number" min="1" step="1" data-setting="width" placeholder="Auto">
+        </label>
+        <label>
+          Height
+          <input type="number" min="1" step="1" data-setting="height" placeholder="Auto">
+        </label>
+        <label>
+          Format
+          <select data-setting="format">
+            <option value="png">PNG</option>
+            <option value="jpg">JPG</option>
+            <option value="webp">WEBP</option>
+          </select>
+        </label>
+      </div>
       <div class="editor-controls">
         <button type="button" data-action="cancel">${t("cancel", "Cancel")}</button>
         <button type="button" data-action="apply">${applyLabel}</button>
