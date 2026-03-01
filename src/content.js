@@ -26,11 +26,13 @@ function attachUploadListener() {
       }
 
       event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
 
       const reader = new FileReader();
       reader.onload = () => window.openEditor(reader.result, input, file);
       reader.readAsDataURL(file);
-    });
+    }, true);
   });
 }
 
