@@ -11,6 +11,10 @@ const OUTPUT_FORMATS = {
   webp: "image/webp"
 };
 
+function t(key, fallback) {
+  return chrome.i18n.getMessage(key) || fallback;
+}
+
 function removeModal() {
   document.getElementById(MODAL_ID)?.remove();
 }
@@ -25,14 +29,33 @@ function createModal(imageSrc, options = {}) {
   removeModal();
 
   const { mode = "upload", fileName = "image" } = options;
+  const applyLabel = mode === "context" ? t("applyToGhost", "Apply to Ghost") : t("applyCrop", "Apply crop");
 
   const modal = document.createElement("div");
   modal.id = MODAL_ID;
   modal.className = "ghost-image-editor-modal";
   modal.innerHTML = `
-    <div class="editor-box" role="dialog" aria-modal="true" aria-label="Image editor">
+    <div class="editor-box" role="dialog" aria-modal="true" aria-label="${t("imageEditor", "Image editor")}">
       <div class="editor-image-wrapper">
-        <img class="editor-image" alt="Selected image" src="${imageSrc}">
+        <img class="editor-image" alt="${t("selectedImage", "Selected image")}" src="${imageSrc}">
+      </div>
+      <div class="editor-settings">
+        <label>
+          ${t("width", "Width")}
+          <input type="number" min="1" step="1" data-setting="width" placeholder="${t("auto", "Auto")}">
+        </label>
+        <label>
+          ${t("height", "Height")}
+          <input type="number" min="1" step="1" data-setting="height" placeholder="${t("auto", "Auto")}">
+        </label>
+        <label>
+          ${t("format", "Format")}
+          <select data-setting="format">
+            <option value="png">PNG</option>
+            <option value="jpg">JPG</option>
+            <option value="webp">WEBP</option>
+          </select>
+        </label>
       </div>
       <div class="editor-settings">
         <label>
@@ -53,10 +76,10 @@ function createModal(imageSrc, options = {}) {
         </label>
       </div>
       <div class="editor-controls">
-        <button type="button" data-action="cancel">Cancel</button>
-        <button type="button" data-action="apply">${mode === "context" ? "Apply to Ghost" : "Apply crop"}</button>
+        <button type="button" data-action="cancel">${t("cancel", "Cancel")}</button>
+        <button type="button" data-action="apply">${applyLabel}</button>
       </div>
-      <p class="editor-hint">Output file: <strong>${fileName}</strong></p>
+      <p class="editor-hint">${t("outputFile", "Output file")}: <strong>${fileName}</strong></p>
     </div>
   `;
 
@@ -83,13 +106,49 @@ function updateInputWithFile(input, file) {
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function findBestGhostImageInput() {
-  const candidates = Array.from(document.querySelectorAll('input[type="file"]'));
-  return candidates.find((input) => {
-    if (input.disabled) return false;
-    const accept = (input.getAttribute("accept") || "").toLowerCase();
-    return accept.includes("image") || accept === "";
-  }) || null;
+function isViableImageInput(input) {
+  if (input.disabled) return false;
+  const accept = (input.getAttribute("accept") || "").toLowerCase();
+  return accept.includes("image") || accept === "";
+}
+
+function findBestGhostImageInput(contextImage) {
+  const candidates = Array.from(document.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
+  if (!candidates.length) return null;
+
+  if (contextImage instanceof Element) {
+    const scopedContainer = contextImage.closest("figure, .kg-image-card, .koenig-card, .kg-card");
+    if (scopedContainer) {
+      const localInput = scopedContainer.querySelector('input[type="file"]');
+      if (localInput && isViableImageInput(localInput)) {
+        return localInput;
+      }
+    }
+
+    const visibleCandidates = candidates.filter((input) => {
+      const style = window.getComputedStyle(input);
+      return style.display !== "none" && style.visibility !== "hidden";
+    });
+
+    if (visibleCandidates.length) {
+      const contextRect = contextImage.getBoundingClientRect();
+      let best = visibleCandidates[0];
+      let bestDistance = Number.POSITIVE_INFINITY;
+      visibleCandidates.forEach((input) => {
+        const rect = input.getBoundingClientRect();
+        const dx = rect.left - contextRect.left;
+        const dy = rect.top - contextRect.top;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < bestDistance) {
+          best = input;
+          bestDistance = distance;
+        }
+      });
+      return best;
+    }
+  }
+
+  return candidates[0];
 }
 
 function downloadFile(file) {
@@ -132,7 +191,7 @@ function buildOutputFile(canvas, originalName, mimeType, outputWidth, outputHeig
   });
 }
 
-async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload" }) {
+async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null }) {
   const { modal, image, cancelButton, applyButton, widthInput, heightInput, formatSelect } = createModal(imageSrc, {
     mode,
     fileName: originalFile.name
@@ -173,12 +232,13 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
       return;
     }
 
-    const ghostInput = findBestGhostImageInput();
+    const ghostInput = findBestGhostImageInput(contextImage);
     if (ghostInput) {
       updateInputWithFile(ghostInput, outputFile);
       return;
     }
 
+    console.warn("[ghost-image-editor] no Ghost image input found; downloading file instead");
     downloadFile(outputFile);
   }
 
@@ -215,22 +275,27 @@ globalThis.openEditorFromContext = async function openEditorFromContext(imageSrc
     }
 
     const blob = await response.blob();
-    if (!blob.type.startsWith("image/")) {
+    const mimeType = blob.type || DEFAULT_OUTPUT_MIME;
+    if (!mimeType.startsWith("image/")) {
       throw new Error("Selected resource is not an image");
     }
 
     const url = new URL(imageSrc, window.location.href);
     const sourceName = url.pathname.split("/").pop() || "image";
     const contextFile = new File([blob], sourceName, {
-      type: blob.type || DEFAULT_OUTPUT_MIME,
+      type: mimeType,
       lastModified: Date.now()
     });
 
+    const objectUrl = URL.createObjectURL(blob);
+    const contextImage = globalThis.__ghostImageEditorContextImage;
     launchEditor({
-      imageSrc: URL.createObjectURL(blob),
+      imageSrc: objectUrl,
       originalFile: contextFile,
-      mode: "context"
+      mode: "context",
+      contextImage
     });
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
   } catch (error) {
     console.warn("[ghost-image-editor] failed to open context editor", error);
   }
