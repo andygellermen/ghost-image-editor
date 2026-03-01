@@ -42,6 +42,7 @@ function updateInputWithFile(input, file) {
 
   input.dataset.editorApplying = "true";
   input.files = transfer.files;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
