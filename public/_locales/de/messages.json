@@ -5,16 +5,58 @@
   "extensionDescription": {
     "message": "Bilder direkt im Ghost‑Admin vor dem Upload zuschneiden und optimieren."
   },
-  "save": { "message": "Speichern" },
-  "cancel": { "message": "Abbrechen" },
-  "format": { "message": "Format" },
-  "contextEdit": { "message": "Mit Ghost Bildeditor bearbeiten" },
-  "applyToGhost": { "message": "Auf Ghost anwenden" },
-  "applyCrop": { "message": "Zuschnitt anwenden" },
-  "imageEditor": { "message": "Bildeditor" },
-  "selectedImage": { "message": "Ausgewähltes Bild" },
-  "width": { "message": "Breite" },
-  "height": { "message": "Höhe" },
-  "auto": { "message": "Auto" },
-  "outputFile": { "message": "Ausgabedatei" }
+  "save": {
+    "message": "Speichern"
+  },
+  "cancel": {
+    "message": "Abbrechen"
+  },
+  "format": {
+    "message": "Format"
+  },
+  "contextEdit": {
+    "message": "Mit Ghost Bildeditor bearbeiten"
+  },
+  "applyToGhost": {
+    "message": "Auf Ghost anwenden"
+  },
+  "applyCrop": {
+    "message": "Zuschnitt anwenden"
+  },
+  "imageEditor": {
+    "message": "Bildeditor"
+  },
+  "selectedImage": {
+    "message": "Ausgewähltes Bild"
+  },
+  "width": {
+    "message": "Breite"
+  },
+  "height": {
+    "message": "Höhe"
+  },
+  "auto": {
+    "message": "Auto"
+  },
+  "outputFile": {
+    "message": "Ausgabedatei"
+  },
+  "originalDimensions": {
+    "message": "Originale Abmessungen"
+  },
+  "currentCropDimensions": {
+    "message": "Aktuelle Zuschnitt-Abmessungen"
+  },
+  "originalSize": {
+    "message": "Originale Dateigröße"
+  },
+  "newSize": {
+    "message": "Neue Dateigröße"
+  },
+  "editedAttributionSuffix": {
+    "message": "(Bild nachträglich bearbeitet)"
+  },
+  "by": {
+    "message": "Foto von"
+  }
 }
