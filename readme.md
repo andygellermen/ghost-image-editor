@@ -27,3 +27,8 @@ Troubleshooting
 Editor hardening notes
 - Programmatic file-input updates dispatched by the extension are intentionally ignored by the upload interception listener (`event.isTrusted`) to avoid feedback loops and accidental retargeting.
 - Context-menu edits prefer upload inputs inside the remembered source card; if no safe target is found, the editor falls back to a download instead of writing to unrelated Ghost fields (e.g. feature image).
+
+Version 0.3.x highlights
+- Context-menu editing now also supports external image URLs (for example Unsplash) by fetching the image through the extension background worker before opening the crop modal.
+- After replacing an Unsplash image via context edit, the card caption attribution is normalized to an explicit linked format and appended with an "edited afterwards" marker.
+- The editor modal now shows original dimensions + original size and previews a new output size when crop/resize settings produce a modified image.

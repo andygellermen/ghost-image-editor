@@ -14,6 +14,7 @@ const OUTPUT_FORMATS = {
 const FEATURE_IMAGE_SELECTORS = "[data-test-feature-image-uploader], .gh-editor-feature-image, .gh-editor-settings, .settings-menu, .settings-menu-pane, .settings-menu-container, .gh-editor-settings-container, aside";
 const CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card";
 const CONTEXT_ROOT_SELECTORS = ".koenig-editor, .gh-koenig-editor, .kg-prose, .kg-card, main";
+const UNSPLASH_DOMAIN = "images.unsplash.com";
 
 const I18N_MESSAGES = {
   en: {
@@ -26,7 +27,12 @@ const I18N_MESSAGES = {
     auto: "Auto",
     format: "Format",
     cancel: "Cancel",
-    outputFile: "Output file"
+    outputFile: "Output file",
+    originalDimensions: "Original dimensions",
+    originalSize: "Original file size",
+    newSize: "New file size",
+    editedAttributionSuffix: "(image edited afterwards)",
+    by: "Photo by"
   },
   de: {
     applyToGhost: "Auf Ghost anwenden",
@@ -38,7 +44,12 @@ const I18N_MESSAGES = {
     auto: "Auto",
     format: "Format",
     cancel: "Abbrechen",
-    outputFile: "Ausgabedatei"
+    outputFile: "Ausgabedatei",
+    originalDimensions: "Originale Abmessungen",
+    originalSize: "Originale Dateigröße",
+    newSize: "Neue Dateigröße",
+    editedAttributionSuffix: "(Bild nachträglich bearbeitet)",
+    by: "Foto von"
   }
 };
 
@@ -62,10 +73,24 @@ function inferExtensionFromMimeType(mimeType) {
   return "png";
 }
 
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / (1024 ** index);
+  return `${value.toFixed(index === 0 ? 0 : 2)} ${units[index]}`;
+}
+
 function createModal(imageSrc, options = {}) {
   removeModal();
 
-  const { mode = "upload", fileName = "image" } = options;
+  const {
+    mode = "upload",
+    fileName = "image",
+    originalWidth = 0,
+    originalHeight = 0,
+    originalSize = 0
+  } = options;
   const applyLabel = mode === "context" ? t("applyToGhost", "Apply to Ghost") : t("applyCrop", "Apply crop");
 
   const modal = document.createElement("div");
@@ -98,7 +123,12 @@ function createModal(imageSrc, options = {}) {
         <button type="button" data-action="cancel">${t("cancel", "Cancel")}</button>
         <button type="button" data-action="apply">${applyLabel}</button>
       </div>
-      <p class="editor-hint">${t("outputFile", "Output file")}: <strong>${fileName}</strong></p>
+      <div class="editor-hints">
+        <p class="editor-hint">${t("outputFile", "Output file")}: <strong>${fileName}</strong></p>
+        <p class="editor-hint">${t("originalDimensions", "Original dimensions")}: <strong>${originalWidth}×${originalHeight}</strong></p>
+        <p class="editor-hint">${t("originalSize", "Original file size")}: <strong>${formatBytes(originalSize)}</strong></p>
+        <p class="editor-hint" data-hint-new-size hidden>${t("newSize", "New file size")}: <strong data-value>–</strong></p>
+      </div>
     </div>
   `;
 
@@ -112,7 +142,9 @@ function createModal(imageSrc, options = {}) {
     applyButton: modal.querySelector('[data-action="apply"]'),
     widthInput: modal.querySelector('[data-setting="width"]'),
     heightInput: modal.querySelector('[data-setting="height"]'),
-    formatSelect: modal.querySelector('[data-setting="format"]')
+    formatSelect: modal.querySelector('[data-setting="format"]'),
+    newSizeHint: modal.querySelector('[data-hint-new-size]'),
+    newSizeValue: modal.querySelector('[data-hint-new-size] [data-value]')
   };
 }
 
@@ -122,7 +154,7 @@ function removeDuplicateEditorSections(modal) {
     if (index > 0) section.remove();
   });
 
-  const hints = modal.querySelectorAll(".editor-hint");
+  const hints = modal.querySelectorAll(".editor-hints");
   hints.forEach((hint, index) => {
     if (index > 0) hint.remove();
   });
@@ -330,10 +362,95 @@ function buildOutputFile(canvas, originalName, mimeType, outputWidth, outputHeig
   });
 }
 
+function isUnsplashImageUrl(imageSrc) {
+  try {
+    const url = new URL(imageSrc, window.location.href);
+    return url.hostname === UNSPLASH_DOMAIN;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function updateUnsplashCaption(contextCard) {
+  if (!(contextCard instanceof Element)) return;
+
+  const captionEditor = contextCard.querySelector('[data-testid="image-caption-editor"] .kg-prose');
+  if (!(captionEditor instanceof HTMLElement)) return;
+
+  const image = contextCard.querySelector("img[src]");
+  const imageUrl = image?.getAttribute("src") || "";
+  if (!isUnsplashImageUrl(imageUrl)) return;
+
+  const previousText = captionEditor.textContent?.trim() || "";
+  if (previousText.includes(t("editedAttributionSuffix", "(image edited afterwards)"))) return;
+
+  const existingPhotographerLink = captionEditor.querySelector('a[href*="unsplash.com/@"]');
+  const existingSourceLink = captionEditor.querySelector('a[href*="unsplash.com"]');
+  const photographerHref = existingPhotographerLink?.getAttribute("href") || "https://unsplash.com";
+  const photographerLabel = existingPhotographerLink?.textContent?.trim() || photographerHref;
+  const sourceHref = existingSourceLink?.getAttribute("href") || "https://unsplash.com";
+
+  captionEditor.innerHTML = `
+    <p>
+      ${t("by", "Photo by")}
+      <a href="${photographerHref}" target="_blank" rel="noopener noreferrer">${photographerLabel}</a>
+      /
+      <a href="${sourceHref}" target="_blank" rel="noopener noreferrer">Unsplash</a>
+      ${t("editedAttributionSuffix", "(image edited afterwards)")}
+    </p>
+  `;
+}
+
+function getImageDimensionsFromElement(imageSrc, imageElement = null) {
+  if (imageElement instanceof HTMLImageElement && imageElement.naturalWidth > 0 && imageElement.naturalHeight > 0) {
+    return Promise.resolve({ width: imageElement.naturalWidth, height: imageElement.naturalHeight });
+  }
+
+  return new Promise((resolve) => {
+    const probe = new Image();
+    probe.onload = () => resolve({ width: probe.naturalWidth, height: probe.naturalHeight });
+    probe.onerror = () => resolve({ width: 0, height: 0 });
+    probe.src = imageSrc;
+  });
+}
+
+function fetchImageFromBackground(imageSrc) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: "FETCH_IMAGE_BLOB", imageSrc }, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+
+      if (!response?.ok || !Array.isArray(response.buffer)) {
+        reject(new Error(response?.error || "Unknown fetch error"));
+        return;
+      }
+
+      const array = new Uint8Array(response.buffer);
+      resolve(new Blob([array], { type: response.type || DEFAULT_OUTPUT_MIME }));
+    });
+  });
+}
+
 async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null, contextCard = null }) {
-  const { modal, image, cancelButton, applyButton, widthInput, heightInput, formatSelect } = createModal(imageSrc, {
+  const originalDimensions = await getImageDimensionsFromElement(imageSrc, contextImage);
+  const {
+    modal,
+    image,
+    cancelButton,
+    applyButton,
+    widthInput,
+    heightInput,
+    formatSelect,
+    newSizeHint,
+    newSizeValue
+  } = createModal(imageSrc, {
     mode,
-    fileName: originalFile.name
+    fileName: originalFile.name,
+    originalWidth: originalDimensions.width,
+    originalHeight: originalDimensions.height,
+    originalSize: originalFile.size
   });
 
   formatSelect.value = inferExtensionFromMimeType(originalFile.type || DEFAULT_OUTPUT_MIME);
@@ -343,6 +460,28 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     autoCropArea: 1,
     responsive: true
   });
+
+  async function refreshSizePreview() {
+    const cropCanvas = cropper.getCroppedCanvas();
+    if (!cropCanvas) return;
+    const dimensions = resolveOutputDimensions(cropCanvas.width, cropCanvas.height, widthInput.value, heightInput.value);
+    const selectedFormat = formatSelect.value;
+    const mimeType = OUTPUT_FORMATS[selectedFormat] || DEFAULT_OUTPUT_MIME;
+    const outputFile = await buildOutputFile(cropCanvas, originalFile.name, mimeType, dimensions.width, dimensions.height);
+
+    const cropData = cropper.getData(true);
+    const isCropped = Math.round(cropData.width) !== originalDimensions.width || Math.round(cropData.height) !== originalDimensions.height;
+    const isResized = dimensions.width !== cropCanvas.width || dimensions.height !== cropCanvas.height;
+
+    if (outputFile && (isCropped || isResized)) {
+      newSizeHint.hidden = false;
+      newSizeValue.textContent = formatBytes(outputFile.size);
+      return;
+    }
+
+    newSizeHint.hidden = true;
+    newSizeValue.textContent = "–";
+  }
 
   function cleanup() {
     cropper.destroy();
@@ -375,12 +514,27 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     const ghostInput = findBestGhostImageInput(contextImage, contextCard);
     if (ghostInput) {
       updateInputWithFile(ghostInput, outputFile);
+      updateUnsplashCaption(contextCard);
       return;
     }
 
     console.warn("[ghost-image-editor] no Ghost image input found; downloading file instead");
     downloadFile(outputFile);
   }
+
+  widthInput.addEventListener("input", () => {
+    refreshSizePreview();
+  });
+  heightInput.addEventListener("input", () => {
+    refreshSizePreview();
+  });
+  formatSelect.addEventListener("change", () => {
+    refreshSizePreview();
+  });
+  image.addEventListener("cropend", () => {
+    refreshSizePreview();
+  });
+  setTimeout(() => refreshSizePreview(), 0);
 
   cancelButton.addEventListener("click", () => {
     cleanup();
@@ -405,12 +559,7 @@ globalThis.openEditor = function openEditor(imageSrc, input, originalFile) {
 
 globalThis.openEditorFromContext = async function openEditorFromContext(imageSrc) {
   try {
-    const response = await fetch(imageSrc, { credentials: "include" });
-    if (!response.ok) {
-      throw new Error(`Unable to load image: ${response.status}`);
-    }
-
-    const blob = await response.blob();
+    const blob = await fetchImageFromBackground(imageSrc);
     const mimeType = blob.type || DEFAULT_OUTPUT_MIME;
     if (!mimeType.startsWith("image/")) {
       throw new Error("Selected resource is not an image");
