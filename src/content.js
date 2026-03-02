@@ -1,6 +1,11 @@
 const EXTENSION_LOG_PREFIX = "[ghost-image-editor]";
 
-const manifestVersion = chrome.runtime.getManifest().version;
+let manifestVersion = "unknown";
+try {
+  manifestVersion = chrome.runtime.getManifest().version;
+} catch (error) {
+  console.warn(`${EXTENSION_LOG_PREFIX} runtime unavailable while reading manifest version`, error);
+}
 console.info(`${EXTENSION_LOG_PREFIX} content script loaded v${manifestVersion}`);
 
 function rememberContextImageTarget(event) {
@@ -63,17 +68,21 @@ function attachUploadListener() {
   });
 }
 
-chrome.runtime.onMessage.addListener((message) => {
-  if (message?.type !== "OPEN_EDITOR_FROM_CONTEXT") return;
-  const openEditorFromContext = globalThis.openEditorFromContext || window.openEditorFromContext;
-  if (typeof openEditorFromContext === "function") {
-    openEditorFromContext(message.imageSrc);
-    return;
-  }
+try {
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message?.type !== "OPEN_EDITOR_FROM_CONTEXT") return;
+    const openEditorFromContext = globalThis.openEditorFromContext || window.openEditorFromContext;
+    if (typeof openEditorFromContext === "function") {
+      openEditorFromContext(message.imageSrc);
+      return;
+    }
 
-  console.warn(`${EXTENSION_LOG_PREFIX} openEditorFromContext hook is missing; opening image URL directly`);
-  window.open(message.imageSrc, "_blank", "noopener,noreferrer");
-});
+    console.warn(`${EXTENSION_LOG_PREFIX} openEditorFromContext hook is missing; opening image URL directly`);
+    window.open(message.imageSrc, "_blank", "noopener,noreferrer");
+  });
+} catch (error) {
+  console.warn(`${EXTENSION_LOG_PREFIX} runtime listener unavailable`, error);
+}
 
 const observer = new MutationObserver(() => attachUploadListener());
 observer.observe(document.body, { childList: true, subtree: true });

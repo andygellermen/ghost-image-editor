@@ -11,16 +11,41 @@ const OUTPUT_FORMATS = {
   webp: "image/webp"
 };
 
-function t(key, fallback) {
-  try {
-    if (!chrome?.runtime?.id || !chrome?.i18n?.getMessage) {
-      return fallback;
-    }
-    return chrome.i18n.getMessage(key) || fallback;
-  } catch (error) {
-    console.warn("[ghost-image-editor] i18n unavailable, using fallback", error);
-    return fallback;
+const I18N_MESSAGES = {
+  en: {
+    applyToGhost: "Apply to Ghost",
+    applyCrop: "Apply crop",
+    imageEditor: "Image editor",
+    selectedImage: "Selected image",
+    width: "Width",
+    height: "Height",
+    auto: "Auto",
+    format: "Format",
+    cancel: "Cancel",
+    outputFile: "Output file"
+  },
+  de: {
+    applyToGhost: "Auf Ghost anwenden",
+    applyCrop: "Zuschnitt anwenden",
+    imageEditor: "Bildeditor",
+    selectedImage: "Ausgewähltes Bild",
+    width: "Breite",
+    height: "Höhe",
+    auto: "Auto",
+    format: "Format",
+    cancel: "Abbrechen",
+    outputFile: "Ausgabedatei"
   }
+};
+
+function getLocale() {
+  const lang = (document.documentElement.lang || navigator.language || "en").toLowerCase();
+  return lang.startsWith("de") ? "de" : "en";
+}
+
+function t(key, fallback) {
+  const locale = getLocale();
+  return I18N_MESSAGES[locale]?.[key] || I18N_MESSAGES.en[key] || fallback;
 }
 
 function removeModal() {
@@ -90,16 +115,12 @@ function createModal(imageSrc, options = {}) {
 function removeDuplicateEditorSections(modal) {
   const settings = modal.querySelectorAll(".editor-settings");
   settings.forEach((section, index) => {
-    if (index > 0) {
-      section.remove();
-    }
+    if (index > 0) section.remove();
   });
 
   const hints = modal.querySelectorAll(".editor-hint");
   hints.forEach((hint, index) => {
-    if (index > 0) {
-      hint.remove();
-    }
+    if (index > 0) hint.remove();
   });
 }
 
@@ -219,10 +240,6 @@ function resolveOutputDimensions(sourceWidth, sourceHeight, widthValue, heightVa
   return { width: sourceWidth, height: sourceHeight };
 }
 
-
-
-
-
 function downloadFile(file) {
   const url = URL.createObjectURL(file);
   const anchor = document.createElement("a");
@@ -294,9 +311,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     cleanup();
 
     if (!outputFile) {
-      if (input) {
-        updateInputWithFile(input, originalFile);
-      }
+      if (input) updateInputWithFile(input, originalFile);
       return;
     }
 
@@ -318,9 +333,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
 
   cancelButton.addEventListener("click", () => {
     cleanup();
-    if (input) {
-      updateInputWithFile(input, originalFile);
-    }
+    if (input) updateInputWithFile(input, originalFile);
   });
 
   applyButton.addEventListener("click", () => {
@@ -330,20 +343,13 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
   modal.addEventListener("click", (event) => {
     if (event.target === modal) {
       cleanup();
-      if (input) {
-        updateInputWithFile(input, originalFile);
-      }
+      if (input) updateInputWithFile(input, originalFile);
     }
   });
 }
 
 globalThis.openEditor = function openEditor(imageSrc, input, originalFile) {
-  try {
-    launchEditor({ imageSrc, input, originalFile, mode: "upload" });
-  } catch (error) {
-    console.warn("[ghost-image-editor] failed to launch upload editor", error);
-    throw error;
-  }
+  launchEditor({ imageSrc, input, originalFile, mode: "upload" });
 };
 
 globalThis.openEditorFromContext = async function openEditorFromContext(imageSrc) {
