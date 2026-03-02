@@ -345,7 +345,7 @@ function setCaptionContent(contextCard, html) {
 }
 
 
-function resolveLiveContextCard(contextCard, contextImage) {
+function resolveLiveContextCard(contextCard, contextImage, contextKind = "card") {
   if (contextCard instanceof Element && contextCard.isConnected) return contextCard;
 
   const rememberedImage = globalThis.__ghostImageEditorContextImage;
@@ -359,7 +359,11 @@ function resolveLiveContextCard(contextCard, contextImage) {
     if (byContext instanceof Element) return byContext;
   }
 
-  return document.querySelector('[data-kg-card="image"][data-kg-card-selected="true"], .gh-editor-feature-image-container') || null;
+  if (contextKind === "feature") {
+    return document.querySelector(".gh-editor-feature-image-container, .gh-editor-feature-image") || null;
+  }
+
+  return document.querySelector('[data-kg-card="image"][data-kg-card-selected="true"], .kg-image-card, [data-kg-card="image"]') || null;
 }
 
 function findBestGhostImageInput(contextImage, contextCard = null) {
@@ -568,7 +572,7 @@ function fetchImageFromBackground(imageSrc) {
   });
 }
 
-async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null, contextCard = null, sourceImageUrl = "" }) {
+async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null, contextCard = null, contextKind = "card", sourceImageUrl = "" }) {
   const originalDimensions = await getImageDimensionsFromElement(imageSrc, contextImage);
   const {
     modal,
@@ -649,24 +653,25 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     }
 
     const sourceWasUnsplash = isUnsplashImageUrl(sourceImageUrl || contextImage?.getAttribute?.("src") || "");
-    const initialCard = resolveLiveContextCard(contextCard, contextImage);
+    const initialCard = resolveLiveContextCard(contextCard, contextImage, contextKind);
     const captionState = getCaptionState(initialCard);
 
     activateContextCard(contextImage);
     await new Promise((resolve) => setTimeout(resolve, 80));
 
-    const liveCard = resolveLiveContextCard(contextCard, contextImage);
+    const liveCard = resolveLiveContextCard(contextCard, contextImage, contextKind);
     const strictCardInput = findCardImageInput(liveCard);
     const ghostInput = strictCardInput || findBestGhostImageInput(contextImage, liveCard);
     debugLog("context apply input resolution", {
       strictCardInput: describeInput(strictCardInput),
       selectedInput: describeInput(ghostInput),
-      sourceWasUnsplash
+      sourceWasUnsplash,
+      contextKind
     });
     if (ghostInput) {
       updateInputWithFile(ghostInput, outputFile);
       if (sourceWasUnsplash) {
-        setTimeout(() => updateUnsplashCaption(resolveLiveContextCard(contextCard, contextImage), captionState), 120);
+        setTimeout(() => updateUnsplashCaption(resolveLiveContextCard(contextCard, contextImage, contextKind), captionState), 120);
       }
       return;
     }
@@ -735,12 +740,14 @@ globalThis.openEditorFromContext = async function openEditorFromContext(imageSrc
     const objectUrl = URL.createObjectURL(blob);
     const contextImage = globalThis.__ghostImageEditorContextImage;
     const contextCard = globalThis.__ghostImageEditorContextCard;
+    const contextKind = globalThis.__ghostImageEditorContextKind || "card";
     launchEditor({
       imageSrc: objectUrl,
       originalFile: contextFile,
       mode: "context",
       contextImage,
       contextCard,
+      contextKind,
       sourceImageUrl: imageSrc
     });
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);

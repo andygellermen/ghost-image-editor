@@ -14,11 +14,16 @@ function rememberContextImageTarget(event) {
   if (!(target instanceof HTMLImageElement)) {
     globalThis.__ghostImageEditorContextImage = null;
     globalThis.__ghostImageEditorContextCard = null;
+    globalThis.__ghostImageEditorContextKind = null;
     return;
   }
 
+  const contextCard = target.closest(CONTEXT_CARD_SELECTORS) || null;
+  const contextKind = contextCard?.closest?.(".gh-editor-feature-image-container, .gh-editor-feature-image") ? "feature" : "card";
+
   globalThis.__ghostImageEditorContextImage = target;
-  globalThis.__ghostImageEditorContextCard = target.closest(CONTEXT_CARD_SELECTORS) || null;
+  globalThis.__ghostImageEditorContextCard = contextCard;
+  globalThis.__ghostImageEditorContextKind = contextKind;
 }
 
 document.addEventListener("contextmenu", rememberContextImageTarget, true);
