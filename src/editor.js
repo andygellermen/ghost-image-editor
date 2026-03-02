@@ -175,6 +175,11 @@ function isLikelyFeatureImageInput(input) {
   return Boolean(input.closest('[data-test-feature-image-uploader], .gh-editor-feature-image, .settings-menu-pane, .gh-editor-settings, aside'));
 }
 
+function isLikelyAppendUploader(input) {
+  const inputName = (input.getAttribute("name") || "").toLowerCase();
+  return input.multiple || inputName === "image-input";
+}
+
 function findBestGhostImageInput(contextImage) {
   const candidates = Array.from(document.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
   if (!candidates.length) return null;
@@ -184,13 +189,20 @@ function findBestGhostImageInput(contextImage) {
     : null;
 
   if (cardContainer) {
-    const localInput = cardContainer.querySelector('input[type="file"]');
-    if (localInput && isViableImageInput(localInput)) {
-      return localInput;
+    const localInputs = Array.from(cardContainer.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
+    const localPreferred = localInputs.find((input) => !isLikelyAppendUploader(input));
+    if (localPreferred) {
+      return localPreferred;
+    }
+    if (localInputs[0]) {
+      return localInputs[0];
     }
   }
 
   if (!(contextImage instanceof Element)) {
+    const preferred = candidates.filter((input) => !isLikelyFeatureImageInput(input) && !isLikelyAppendUploader(input));
+    if (preferred.length) return preferred[preferred.length - 1];
+
     const nonFeature = candidates.filter((input) => !isLikelyFeatureImageInput(input));
     return nonFeature[nonFeature.length - 1] || candidates[candidates.length - 1];
   }
@@ -206,8 +218,9 @@ function findBestGhostImageInput(contextImage) {
     const distance = Math.sqrt(dx * dx + dy * dy);
     const commonAncestorDepth = getCommonAncestorDepth(contextImage, input);
     const featurePenalty = isLikelyFeatureImageInput(input) ? 5000 : 0;
+    const appendPenalty = isLikelyAppendUploader(input) ? 2500 : 0;
 
-    const score = commonAncestorDepth * 100 - distance - featurePenalty;
+    const score = commonAncestorDepth * 100 - distance - featurePenalty - appendPenalty;
     if (score > bestScore) {
       best = input;
       bestScore = score;
