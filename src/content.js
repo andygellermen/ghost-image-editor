@@ -1,5 +1,5 @@
 const EXTENSION_LOG_PREFIX = "[ghost-image-editor]";
-const CONTEXT_CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card";
+const CONTEXT_CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card, .gh-editor-feature-image-container, .gh-editor-feature-image";
 
 let manifestVersion = "unknown";
 try {
