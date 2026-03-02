@@ -37,6 +37,10 @@ function attachUploadListener() {
     input.dataset.editorAttached = "true";
 
     input.addEventListener("change", (event) => {
+      if (!event.isTrusted) {
+        return;
+      }
+
       if (input.dataset.editorApplying === "true") {
         delete input.dataset.editorApplying;
         return;
