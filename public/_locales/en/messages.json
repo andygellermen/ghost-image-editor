@@ -8,5 +8,13 @@
   "save": { "message": "Save" },
   "cancel": { "message": "Cancel" },
   "format": { "message": "Format" },
-  "contextEdit": { "message": "Edit with Ghost Image Editor" }
+  "contextEdit": { "message": "Edit with Ghost Image Editor" },
+  "applyToGhost": { "message": "Apply to Ghost" },
+  "applyCrop": { "message": "Apply crop" },
+  "imageEditor": { "message": "Image editor" },
+  "selectedImage": { "message": "Selected image" },
+  "width": { "message": "Width" },
+  "height": { "message": "Height" },
+  "auto": { "message": "Auto" },
+  "outputFile": { "message": "Output file" }
 }

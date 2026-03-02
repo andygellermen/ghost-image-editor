@@ -8,5 +8,13 @@
   "save": { "message": "Speichern" },
   "cancel": { "message": "Abbrechen" },
   "format": { "message": "Format" },
-  "contextEdit": { "message": "Mit Ghost Bildeditor bearbeiten" }
+  "contextEdit": { "message": "Mit Ghost Bildeditor bearbeiten" },
+  "applyToGhost": { "message": "Auf Ghost anwenden" },
+  "applyCrop": { "message": "Zuschnitt anwenden" },
+  "imageEditor": { "message": "Bildeditor" },
+  "selectedImage": { "message": "Ausgewähltes Bild" },
+  "width": { "message": "Breite" },
+  "height": { "message": "Höhe" },
+  "auto": { "message": "Auto" },
+  "outputFile": { "message": "Ausgabedatei" }
 }
