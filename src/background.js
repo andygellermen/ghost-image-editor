@@ -18,3 +18,31 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     imageSrc: info.srcUrl
   });
 });
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== "FETCH_IMAGE_BLOB" || !message.imageSrc) {
+    return undefined;
+  }
+
+  (async () => {
+    try {
+      const response = await fetch(message.imageSrc);
+      if (!response.ok) {
+        sendResponse({ ok: false, error: `Unable to load image: ${response.status}` });
+        return;
+      }
+
+      const blob = await response.blob();
+      const buffer = await blob.arrayBuffer();
+      sendResponse({
+        ok: true,
+        type: blob.type || "image/png",
+        buffer: Array.from(new Uint8Array(buffer))
+      });
+    } catch (error) {
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  })();
+
+  return true;
+});
