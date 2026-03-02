@@ -111,49 +111,81 @@ function isViableImageInput(input) {
   return accept.includes("image") || accept === "";
 }
 
+function getElementDepth(element) {
+  let depth = 0;
+  let cursor = element;
+  while (cursor && cursor.parentElement) {
+    depth += 1;
+    cursor = cursor.parentElement;
+  }
+  return depth;
+}
+
+function getCommonAncestorDepth(a, b) {
+  if (!(a instanceof Element) || !(b instanceof Element)) return 0;
+
+  const ancestors = new Set();
+  let cursor = a;
+  while (cursor) {
+    ancestors.add(cursor);
+    cursor = cursor.parentElement;
+  }
+
+  cursor = b;
+  while (cursor) {
+    if (ancestors.has(cursor)) {
+      return getElementDepth(cursor);
+    }
+    cursor = cursor.parentElement;
+  }
+
+  return 0;
+}
+
+function isLikelyFeatureImageInput(input) {
+  return Boolean(input.closest('[data-test-feature-image-uploader], .gh-editor-feature-image, .settings-menu-pane, .gh-editor-settings, aside'));
+}
+
 function findBestGhostImageInput(contextImage) {
   const candidates = Array.from(document.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
   if (!candidates.length) return null;
 
-  const activeElement = document.activeElement;
-  if (activeElement instanceof Element) {
-    const activeContainer = activeElement.closest("figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]");
-    if (activeContainer) {
-      const activeInput = activeContainer.querySelector('input[type="file"]');
-      if (activeInput && isViableImageInput(activeInput)) {
-        return activeInput;
-      }
+  const cardContainer = contextImage instanceof Element
+    ? contextImage.closest('figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]')
+    : null;
+
+  if (cardContainer) {
+    const localInput = cardContainer.querySelector('input[type="file"]');
+    if (localInput && isViableImageInput(localInput)) {
+      return localInput;
     }
   }
 
-  if (contextImage instanceof Element) {
-    const scopedContainer = contextImage.closest("figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]");
-    if (scopedContainer) {
-      const localInput = scopedContainer.querySelector('input[type="file"]');
-      if (localInput && isViableImageInput(localInput)) {
-        return localInput;
-      }
-    }
-
-    const contextRect = contextImage.getBoundingClientRect();
-    let best = candidates[candidates.length - 1];
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    candidates.forEach((input) => {
-      const rect = input.getBoundingClientRect();
-      const dx = rect.left - contextRect.left;
-      const dy = rect.top - contextRect.top;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance < bestDistance) {
-        best = input;
-        bestDistance = distance;
-      }
-    });
-
-    return best;
+  if (!(contextImage instanceof Element)) {
+    const nonFeature = candidates.filter((input) => !isLikelyFeatureImageInput(input));
+    return nonFeature[nonFeature.length - 1] || candidates[candidates.length - 1];
   }
 
-  return candidates[candidates.length - 1];
+  const contextRect = contextImage.getBoundingClientRect();
+  let best = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  candidates.forEach((input) => {
+    const rect = input.getBoundingClientRect();
+    const dx = rect.left - contextRect.left;
+    const dy = rect.top - contextRect.top;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const commonAncestorDepth = getCommonAncestorDepth(contextImage, input);
+    const featurePenalty = isLikelyFeatureImageInput(input) ? 5000 : 0;
+
+    const score = commonAncestorDepth * 100 - distance - featurePenalty;
+    if (score > bestScore) {
+      best = input;
+      bestScore = score;
+    }
+  });
+
+  return best || candidates[candidates.length - 1];
 }
 
 function resolveOutputDimensions(sourceWidth, sourceHeight, widthValue, heightValue) {
