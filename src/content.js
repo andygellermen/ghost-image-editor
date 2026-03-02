@@ -3,6 +3,17 @@ const EXTENSION_LOG_PREFIX = "[ghost-image-editor]";
 const manifestVersion = chrome.runtime.getManifest().version;
 console.info(`${EXTENSION_LOG_PREFIX} content script loaded v${manifestVersion}`);
 
+function rememberContextImageTarget(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLImageElement)) {
+    globalThis.__ghostImageEditorContextImage = null;
+    return;
+  }
+
+  globalThis.__ghostImageEditorContextImage = target;
+}
+
+document.addEventListener("contextmenu", rememberContextImageTarget, true);
 
 function attachUploadListener() {
   const inputs = document.querySelectorAll('input[type="file"]');
