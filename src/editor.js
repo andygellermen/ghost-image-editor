@@ -172,7 +172,7 @@ function getCommonAncestorDepth(a, b) {
 }
 
 function isLikelyFeatureImageInput(input) {
-  return Boolean(input.closest('[data-test-feature-image-uploader], .gh-editor-feature-image, .settings-menu-pane, .gh-editor-settings, aside'));
+  return Boolean(input.closest('[data-test-feature-image-uploader], .gh-editor-feature-image, .gh-editor-settings, .settings-menu, .settings-menu-pane, .settings-menu-container, .gh-editor-settings-container, aside'));
 }
 
 function isLikelyAppendUploader(input) {
@@ -180,9 +180,20 @@ function isLikelyAppendUploader(input) {
   return input.multiple || inputName === "image-input";
 }
 
+function getPreferredContextRoot(contextImage) {
+  if (!(contextImage instanceof Element)) return null;
+  return contextImage.closest('.koenig-editor, .gh-koenig-editor, .kg-prose, .kg-card, main');
+}
+
 function findBestGhostImageInput(contextImage) {
-  const candidates = Array.from(document.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
-  if (!candidates.length) return null;
+  const allCandidates = Array.from(document.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
+  if (!allCandidates.length) return null;
+
+  const contextRoot = getPreferredContextRoot(contextImage);
+  const scopedCandidates = contextRoot
+    ? allCandidates.filter((input) => contextRoot.contains(input))
+    : allCandidates;
+  const candidates = scopedCandidates.length ? scopedCandidates : allCandidates;
 
   const cardContainer = contextImage instanceof Element
     ? contextImage.closest('figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]')
