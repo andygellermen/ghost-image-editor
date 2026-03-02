@@ -115,6 +115,17 @@ function findBestGhostImageInput(contextImage) {
   const candidates = Array.from(document.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
   if (!candidates.length) return null;
 
+  const activeElement = document.activeElement;
+  if (activeElement instanceof Element) {
+    const activeContainer = activeElement.closest("figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]");
+    if (activeContainer) {
+      const activeInput = activeContainer.querySelector('input[type="file"]');
+      if (activeInput && isViableImageInput(activeInput)) {
+        return activeInput;
+      }
+    }
+  }
+
   if (contextImage instanceof Element) {
     const scopedContainer = contextImage.closest("figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]");
     if (scopedContainer) {
@@ -168,12 +179,8 @@ function resolveOutputDimensions(sourceWidth, sourceHeight, widthValue, heightVa
   return { width: sourceWidth, height: sourceHeight };
 }
 
-function focusContextImage(contextImage) {
-  if (!(contextImage instanceof HTMLElement)) return;
-  const container = contextImage.closest("figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]") || contextImage;
-  container.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-  container.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-}
+
+
 
 
 function downloadFile(file) {
@@ -258,9 +265,9 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
       return;
     }
 
-    focusContextImage(contextImage);
     const ghostInput = findBestGhostImageInput(contextImage);
     if (ghostInput) {
+      console.info("[ghost-image-editor] applying context edit to Ghost input", ghostInput);
       updateInputWithFile(ghostInput, outputFile);
       return;
     }
