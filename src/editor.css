@@ -53,6 +53,13 @@
   padding: 7px 8px;
 }
 
+
+.editor-hints {
+  margin-top: 10px;
+  display: grid;
+  gap: 4px;
+}
+
 .editor-hint {
   margin: 10px 0 0;
   font-size: 12px;
