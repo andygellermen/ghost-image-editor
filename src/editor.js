@@ -11,6 +11,10 @@ const OUTPUT_FORMATS = {
   webp: "image/webp"
 };
 
+const FEATURE_IMAGE_SELECTORS = "[data-test-feature-image-uploader], .gh-editor-feature-image, .gh-editor-settings, .settings-menu, .settings-menu-pane, .settings-menu-container, .gh-editor-settings-container, aside";
+const CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card";
+const CONTEXT_ROOT_SELECTORS = ".koenig-editor, .gh-koenig-editor, .kg-prose, .kg-card, main";
+
 const I18N_MESSAGES = {
   en: {
     applyToGhost: "Apply to Ghost",
@@ -172,7 +176,7 @@ function getCommonAncestorDepth(a, b) {
 }
 
 function isLikelyFeatureImageInput(input) {
-  return Boolean(input.closest('[data-test-feature-image-uploader], .gh-editor-feature-image, .gh-editor-settings, .settings-menu, .settings-menu-pane, .settings-menu-container, .gh-editor-settings-container, aside'));
+  return Boolean(input.closest(FEATURE_IMAGE_SELECTORS));
 }
 
 function isLikelyAppendUploader(input) {
@@ -182,13 +186,13 @@ function isLikelyAppendUploader(input) {
 
 function getPreferredContextRoot(contextImage) {
   if (!(contextImage instanceof Element)) return null;
-  return contextImage.closest('.koenig-editor, .gh-koenig-editor, .kg-prose, .kg-card, main');
+  return contextImage.closest(CONTEXT_ROOT_SELECTORS);
 }
 
 function activateContextCard(contextImage) {
   if (!(contextImage instanceof HTMLElement)) return;
-  const card = contextImage.closest('.kg-card, .kg-image-card, figure, [data-kg-card]') || contextImage;
-  card.click();
+  const card = contextImage.closest(CARD_SELECTORS) || contextImage;
+  card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
 
 function findBestGhostImageInput(contextImage, contextCard = null) {
@@ -204,7 +208,7 @@ function findBestGhostImageInput(contextImage, contextCard = null) {
   const cardContainer = contextCard instanceof Element
     ? contextCard
     : contextImage instanceof Element
-      ? contextImage.closest('figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]')
+      ? contextImage.closest(CARD_SELECTORS)
       : null;
 
   if (cardContainer) {
@@ -370,7 +374,6 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     await new Promise((resolve) => setTimeout(resolve, 50));
     const ghostInput = findBestGhostImageInput(contextImage, contextCard);
     if (ghostInput) {
-      console.info("[ghost-image-editor] applying context edit to Ghost input", ghostInput);
       updateInputWithFile(ghostInput, outputFile);
       return;
     }

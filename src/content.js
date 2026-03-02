@@ -1,4 +1,5 @@
 const EXTENSION_LOG_PREFIX = "[ghost-image-editor]";
+const CONTEXT_CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card";
 
 let manifestVersion = "unknown";
 try {
@@ -17,7 +18,7 @@ function rememberContextImageTarget(event) {
   }
 
   globalThis.__ghostImageEditorContextImage = target;
-  globalThis.__ghostImageEditorContextCard = target.closest('.kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card') || null;
+  globalThis.__ghostImageEditorContextCard = target.closest(CONTEXT_CARD_SELECTORS) || null;
 }
 
 document.addEventListener("contextmenu", rememberContextImageTarget, true);

@@ -22,3 +22,8 @@ Troubleshooting
 - If DevTools still shows `openEditor is not defined` from `content.js:1`, Chrome is still running an older `dist/` build. Run `npm run build` and reload the extension.
 - `window.openEditorFromContext is not a function` in the **page console** can happen because extension content scripts run in an isolated world. Use the context menu flow to test instead of calling extension hooks directly from the page context.
 - Confirm the loaded version by checking for `[ghost-image-editor] content script loaded v...` and `[ghost-image-editor] background loaded v...` in DevTools.
+
+
+Editor hardening notes
+- Programmatic file-input updates dispatched by the extension are intentionally ignored by the upload interception listener (`event.isTrusted`) to avoid feedback loops and accidental retargeting.
+- Context-menu edits prefer upload inputs inside the remembered source card; if no safe target is found, the editor falls back to a download instead of writing to unrelated Ghost fields (e.g. feature image).
