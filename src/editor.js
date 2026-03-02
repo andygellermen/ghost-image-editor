@@ -185,6 +185,12 @@ function getPreferredContextRoot(contextImage) {
   return contextImage.closest('.koenig-editor, .gh-koenig-editor, .kg-prose, .kg-card, main');
 }
 
+function activateContextCard(contextImage) {
+  if (!(contextImage instanceof HTMLElement)) return;
+  const card = contextImage.closest('.kg-card, .kg-image-card, figure, [data-kg-card]') || contextImage;
+  card.click();
+}
+
 function findBestGhostImageInput(contextImage) {
   const allCandidates = Array.from(document.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
   if (!allCandidates.length) return null;
@@ -201,28 +207,39 @@ function findBestGhostImageInput(contextImage) {
 
   if (cardContainer) {
     const localInputs = Array.from(cardContainer.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
-    const localPreferred = localInputs.find((input) => !isLikelyAppendUploader(input));
+    const localPreferred = localInputs.find((input) => !isLikelyAppendUploader(input) && !isLikelyFeatureImageInput(input));
     if (localPreferred) {
       return localPreferred;
     }
-    if (localInputs[0]) {
-      return localInputs[0];
+
+    const localVisible = localInputs.find((input) => {
+      const style = window.getComputedStyle(input);
+      return style.display !== "none" && style.visibility !== "hidden";
+    });
+    if (localVisible) {
+      return localVisible;
     }
   }
 
+  const visibleCandidates = candidates.filter((input) => {
+    const style = window.getComputedStyle(input);
+    return style.display !== "none" && style.visibility !== "hidden";
+  });
+
   if (!(contextImage instanceof Element)) {
-    const preferred = candidates.filter((input) => !isLikelyFeatureImageInput(input) && !isLikelyAppendUploader(input));
+    const preferred = visibleCandidates.filter((input) => !isLikelyFeatureImageInput(input) && !isLikelyAppendUploader(input));
     if (preferred.length) return preferred[preferred.length - 1];
 
-    const nonFeature = candidates.filter((input) => !isLikelyFeatureImageInput(input));
-    return nonFeature[nonFeature.length - 1] || candidates[candidates.length - 1];
+    const nonFeature = visibleCandidates.filter((input) => !isLikelyFeatureImageInput(input));
+    return nonFeature[nonFeature.length - 1] || null;
   }
 
+  const pool = visibleCandidates.length ? visibleCandidates : candidates;
   const contextRect = contextImage.getBoundingClientRect();
   let best = null;
   let bestScore = Number.NEGATIVE_INFINITY;
 
-  candidates.forEach((input) => {
+  pool.forEach((input) => {
     const rect = input.getBoundingClientRect();
     const dx = rect.left - contextRect.left;
     const dy = rect.top - contextRect.top;
@@ -238,7 +255,14 @@ function findBestGhostImageInput(contextImage) {
     }
   });
 
-  return best || candidates[candidates.length - 1];
+  if (!best) return null;
+
+  if (isLikelyFeatureImageInput(best)) {
+    const safer = pool.find((input) => !isLikelyFeatureImageInput(input) && !isLikelyAppendUploader(input));
+    return safer || null;
+  }
+
+  return best;
 }
 
 function resolveOutputDimensions(sourceWidth, sourceHeight, widthValue, heightValue) {
@@ -344,6 +368,8 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
       return;
     }
 
+    activateContextCard(contextImage);
+    await new Promise((resolve) => setTimeout(resolve, 50));
     const ghostInput = findBestGhostImageInput(contextImage);
     if (ghostInput) {
       console.info("[ghost-image-editor] applying context edit to Ghost input", ghostInput);
