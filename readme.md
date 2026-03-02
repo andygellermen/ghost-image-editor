@@ -32,3 +32,9 @@ Version 0.3.x highlights
 - Context-menu editing now also supports external image URLs (for example Unsplash) by fetching the image through the extension background worker before opening the crop modal.
 - After replacing an Unsplash image via context edit, the card caption attribution is normalized to an explicit linked format and appended with an "edited afterwards" marker.
 - The editor modal now shows original dimensions + original size and previews a new output size when crop/resize settings produce a modified image.
+
+
+Debugging context-target selection (v0.3.x)
+- Enable debug logs by setting `localStorage.setItem("ghost-image-editor-debug", "1")` in the Ghost editor tab and reload.
+- Alternatively append `?ghostImageEditorDebug=1` to the URL, or set `window.__ghostImageEditorDebug = true` from DevTools.
+- Debug logs are emitted with prefix `[ghost-image-editor] [debug]` and include which file input was selected for context replacement.

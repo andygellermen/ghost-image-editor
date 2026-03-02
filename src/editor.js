@@ -15,6 +15,46 @@ const FEATURE_IMAGE_SELECTORS = "[data-test-feature-image-uploader], .gh-editor-
 const CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card";
 const CONTEXT_ROOT_SELECTORS = ".koenig-editor, .gh-koenig-editor, .kg-prose, .kg-card, main";
 const UNSPLASH_DOMAIN = "images.unsplash.com";
+const CARD_TOOLBAR_SELECTOR = "[data-kg-card-toolbar=\"image\"]";
+const LOG_PREFIX = "[ghost-image-editor]";
+const DEBUG_QUERY_PARAM = "ghostImageEditorDebug";
+const DEBUG_STORAGE_KEY = "ghost-image-editor-debug";
+
+function isDebugEnabled() {
+  if (globalThis.__ghostImageEditorDebug === true) return true;
+
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get(DEBUG_QUERY_PARAM) === "1") return true;
+  } catch (_error) {
+    // ignore URL parsing issues
+  }
+
+  try {
+    return window.localStorage?.getItem(DEBUG_STORAGE_KEY) === "1";
+  } catch (_error) {
+    return false;
+  }
+}
+
+function debugLog(message, details = null) {
+  if (!isDebugEnabled()) return;
+  if (details === null || details === undefined) {
+    console.info(`${LOG_PREFIX} [debug] ${message}`);
+    return;
+  }
+
+  console.info(`${LOG_PREFIX} [debug] ${message}`, details);
+}
+
+function describeInput(input) {
+  if (!(input instanceof HTMLInputElement)) return "none";
+  const name = input.getAttribute("name") || "";
+  const accept = input.getAttribute("accept") || "";
+  const cls = input.className || "";
+  return `name=${name || "-"};accept=${accept || "-"};class=${cls || "-"}`;
+}
+
 
 const I18N_MESSAGES = {
   en: {
@@ -227,9 +267,59 @@ function activateContextCard(contextImage) {
   card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
 
+
+function findCardImageInput(contextCard) {
+  if (!(contextCard instanceof Element)) return null;
+
+  const toolbarInput = contextCard.querySelector(`${CARD_TOOLBAR_SELECTOR} input[type="file"][name="image-input"]`);
+  if (toolbarInput && isViableImageInput(toolbarInput)) {
+    debugLog("selected strict card toolbar input", { input: describeInput(toolbarInput) });
+    return toolbarInput;
+  }
+
+  const anyLocal = contextCard.querySelector('input[type="file"][name="image-input"], input[type="file"]');
+  if (anyLocal && isViableImageInput(anyLocal)) {
+    debugLog("selected local card input fallback", { input: describeInput(anyLocal) });
+    return anyLocal;
+  }
+
+  debugLog("no strict card input found");
+  return null;
+}
+
+function getCaptionState(contextCard) {
+  if (!(contextCard instanceof Element)) return null;
+
+  const captionEditor = contextCard.querySelector('[data-testid="image-caption-editor"] .kg-prose');
+  const rawText = captionEditor?.textContent?.trim() || "";
+  const existingPhotographerLink = captionEditor?.querySelector('a[href*="unsplash.com/@"]');
+  const existingSourceLink = captionEditor?.querySelector('a[href*="unsplash.com"]');
+
+  return {
+    rawText,
+    photographerHref: existingPhotographerLink?.getAttribute("href") || "https://unsplash.com",
+    photographerLabel: existingPhotographerLink?.textContent?.trim() || "Unsplash",
+    sourceHref: existingSourceLink?.getAttribute("href") || "https://unsplash.com"
+  };
+}
+
+function setCaptionContent(contextCard, html) {
+  if (!(contextCard instanceof Element) || !html) return;
+  const captionEditor = contextCard.querySelector('[data-testid="image-caption-editor"] .kg-prose');
+  if (!(captionEditor instanceof HTMLElement)) return;
+
+  captionEditor.innerHTML = html;
+  const editable = captionEditor.closest('[contenteditable="true"]') || captionEditor;
+  editable.dispatchEvent(new Event("input", { bubbles: true }));
+  editable.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 function findBestGhostImageInput(contextImage, contextCard = null) {
   const allCandidates = Array.from(document.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
-  if (!allCandidates.length) return null;
+  if (!allCandidates.length) {
+    debugLog("no viable file inputs found in document");
+    return null;
+  }
 
   const contextRoot = getPreferredContextRoot(contextImage);
   const scopedCandidates = contextRoot
@@ -265,6 +355,7 @@ function findBestGhostImageInput(contextImage, contextCard = null) {
   });
 
   if (!(contextImage instanceof Element)) {
+    debugLog("missing context image while resolving best ghost input");
     return null;
   }
 
@@ -289,13 +380,19 @@ function findBestGhostImageInput(contextImage, contextCard = null) {
     }
   });
 
-  if (!best) return null;
+  if (!best) {
+    debugLog("best ghost input could not be resolved");
+    return null;
+  }
 
   if (isLikelyFeatureImageInput(best)) {
     const safer = pool.find((input) => !isLikelyFeatureImageInput(input) && !isLikelyAppendUploader(input));
-    return safer || null;
+    const chosen = safer || null;
+    debugLog("feature-image candidate filtered", { chosen: describeInput(chosen) });
+    return chosen;
   }
 
+  debugLog("selected best ghost input", { input: describeInput(best) });
   return best;
 }
 
@@ -371,26 +468,14 @@ function isUnsplashImageUrl(imageSrc) {
   }
 }
 
-function updateUnsplashCaption(contextCard) {
+function updateUnsplashCaption(contextCard, captionState = null) {
   if (!(contextCard instanceof Element)) return;
 
-  const captionEditor = contextCard.querySelector('[data-testid="image-caption-editor"] .kg-prose');
-  if (!(captionEditor instanceof HTMLElement)) return;
+  const photographerHref = captionState?.photographerHref || "https://unsplash.com";
+  const photographerLabel = captionState?.photographerLabel || "Unsplash";
+  const sourceHref = captionState?.sourceHref || "https://unsplash.com";
 
-  const image = contextCard.querySelector("img[src]");
-  const imageUrl = image?.getAttribute("src") || "";
-  if (!isUnsplashImageUrl(imageUrl)) return;
-
-  const previousText = captionEditor.textContent?.trim() || "";
-  if (previousText.includes(t("editedAttributionSuffix", "(image edited afterwards)"))) return;
-
-  const existingPhotographerLink = captionEditor.querySelector('a[href*="unsplash.com/@"]');
-  const existingSourceLink = captionEditor.querySelector('a[href*="unsplash.com"]');
-  const photographerHref = existingPhotographerLink?.getAttribute("href") || "https://unsplash.com";
-  const photographerLabel = existingPhotographerLink?.textContent?.trim() || photographerHref;
-  const sourceHref = existingSourceLink?.getAttribute("href") || "https://unsplash.com";
-
-  captionEditor.innerHTML = `
+  const captionHtml = `
     <p>
       ${t("by", "Photo by")}
       <a href="${photographerHref}" target="_blank" rel="noopener noreferrer">${photographerLabel}</a>
@@ -399,6 +484,8 @@ function updateUnsplashCaption(contextCard) {
       ${t("editedAttributionSuffix", "(image edited afterwards)")}
     </p>
   `;
+
+  setCaptionContent(contextCard, captionHtml);
 }
 
 function getImageDimensionsFromElement(imageSrc, imageElement = null) {
@@ -433,7 +520,7 @@ function fetchImageFromBackground(imageSrc) {
   });
 }
 
-async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null, contextCard = null }) {
+async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null, contextCard = null, sourceImageUrl = "" }) {
   const originalDimensions = await getImageDimensionsFromElement(imageSrc, contextImage);
   const {
     modal,
@@ -509,16 +596,32 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
       return;
     }
 
+    const sourceWasUnsplash = isUnsplashImageUrl(sourceImageUrl || contextImage?.getAttribute?.("src") || "");
+    const captionState = getCaptionState(contextCard);
+
     activateContextCard(contextImage);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const ghostInput = findBestGhostImageInput(contextImage, contextCard);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    const strictCardInput = findCardImageInput(contextCard);
+    const ghostInput = strictCardInput || findBestGhostImageInput(contextImage, contextCard);
+    debugLog("context apply input resolution", {
+      strictCardInput: describeInput(strictCardInput),
+      selectedInput: describeInput(ghostInput),
+      sourceWasUnsplash
+    });
     if (ghostInput) {
       updateInputWithFile(ghostInput, outputFile);
-      updateUnsplashCaption(contextCard);
+      if (sourceWasUnsplash) {
+        setTimeout(() => updateUnsplashCaption(contextCard, captionState), 120);
+      }
       return;
     }
 
     console.warn("[ghost-image-editor] no Ghost image input found; downloading file instead");
+    debugLog("falling back to download because no input matched", {
+      sourceImageUrl,
+      contextImageSrc: contextImage?.getAttribute?.("src") || ""
+    });
     downloadFile(outputFile);
   }
 
@@ -554,7 +657,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
 }
 
 globalThis.openEditor = function openEditor(imageSrc, input, originalFile) {
-  launchEditor({ imageSrc, input, originalFile, mode: "upload" });
+  launchEditor({ imageSrc, input, originalFile, mode: "upload", sourceImageUrl: imageSrc });
 };
 
 globalThis.openEditorFromContext = async function openEditorFromContext(imageSrc) {
@@ -580,7 +683,8 @@ globalThis.openEditorFromContext = async function openEditorFromContext(imageSrc
       originalFile: contextFile,
       mode: "context",
       contextImage,
-      contextCard
+      contextCard,
+      sourceImageUrl: imageSrc
     });
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
   } catch (error) {
