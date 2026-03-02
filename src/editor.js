@@ -3,37 +3,96 @@ import "cropperjs/dist/cropper.css";
 import "./editor.css";
 
 const MODAL_ID = "ghost-image-editor-modal";
+const DEFAULT_OUTPUT_MIME = "image/png";
+const OUTPUT_FORMATS = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp"
+};
+
+function t(key, fallback) {
+  return chrome.i18n.getMessage(key) || fallback;
+}
 
 function removeModal() {
   document.getElementById(MODAL_ID)?.remove();
 }
 
-function createModal(imageSrc) {
+function inferExtensionFromMimeType(mimeType) {
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/webp") return "webp";
+  return "png";
+}
+
+function createModal(imageSrc, options = {}) {
   removeModal();
+
+  const { mode = "upload", fileName = "image" } = options;
+  const applyLabel = mode === "context" ? t("applyToGhost", "Apply to Ghost") : t("applyCrop", "Apply crop");
 
   const modal = document.createElement("div");
   modal.id = MODAL_ID;
   modal.className = "ghost-image-editor-modal";
   modal.innerHTML = `
-    <div class="editor-box" role="dialog" aria-modal="true" aria-label="Image editor">
+    <div class="editor-box" role="dialog" aria-modal="true" aria-label="${t("imageEditor", "Image editor")}">
       <div class="editor-image-wrapper">
-        <img class="editor-image" alt="Selected image" src="${imageSrc}">
+        <img class="editor-image" alt="${t("selectedImage", "Selected image")}" src="${imageSrc}">
+      </div>
+      <div class="editor-settings">
+        <label>
+          ${t("width", "Width")}
+          <input type="number" min="1" step="1" data-setting="width" placeholder="${t("auto", "Auto")}">
+        </label>
+        <label>
+          ${t("height", "Height")}
+          <input type="number" min="1" step="1" data-setting="height" placeholder="${t("auto", "Auto")}">
+        </label>
+        <label>
+          ${t("format", "Format")}
+          <select data-setting="format">
+            <option value="png">PNG</option>
+            <option value="jpg">JPG</option>
+            <option value="webp">WEBP</option>
+          </select>
+        </label>
       </div>
       <div class="editor-controls">
-        <button type="button" data-action="cancel">Cancel</button>
-        <button type="button" data-action="apply">Apply crop</button>
+        <button type="button" data-action="cancel">${t("cancel", "Cancel")}</button>
+        <button type="button" data-action="apply">${applyLabel}</button>
       </div>
+      <p class="editor-hint">${t("outputFile", "Output file")}: <strong>${fileName}</strong></p>
     </div>
   `;
 
   document.body.appendChild(modal);
+  removeDuplicateEditorSections(modal);
 
   return {
     modal,
     image: modal.querySelector(".editor-image"),
     cancelButton: modal.querySelector('[data-action="cancel"]'),
-    applyButton: modal.querySelector('[data-action="apply"]')
+    applyButton: modal.querySelector('[data-action="apply"]'),
+    widthInput: modal.querySelector('[data-setting="width"]'),
+    heightInput: modal.querySelector('[data-setting="height"]'),
+    formatSelect: modal.querySelector('[data-setting="format"]')
   };
+}
+
+function removeDuplicateEditorSections(modal) {
+  const settings = modal.querySelectorAll(".editor-settings");
+  settings.forEach((section, index) => {
+    if (index > 0) {
+      section.remove();
+    }
+  });
+
+  const hints = modal.querySelectorAll(".editor-hint");
+  hints.forEach((hint, index) => {
+    if (index > 0) {
+      hint.remove();
+    }
+  });
 }
 
 function updateInputWithFile(input, file) {
@@ -46,8 +105,164 @@ function updateInputWithFile(input, file) {
   input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-globalThis.openEditor = function openEditor(imageSrc, input, originalFile) {
-  const { modal, image, cancelButton, applyButton } = createModal(imageSrc);
+function isViableImageInput(input) {
+  if (input.disabled) return false;
+  const accept = (input.getAttribute("accept") || "").toLowerCase();
+  return accept.includes("image") || accept === "";
+}
+
+function getElementDepth(element) {
+  let depth = 0;
+  let cursor = element;
+  while (cursor && cursor.parentElement) {
+    depth += 1;
+    cursor = cursor.parentElement;
+  }
+  return depth;
+}
+
+function getCommonAncestorDepth(a, b) {
+  if (!(a instanceof Element) || !(b instanceof Element)) return 0;
+
+  const ancestors = new Set();
+  let cursor = a;
+  while (cursor) {
+    ancestors.add(cursor);
+    cursor = cursor.parentElement;
+  }
+
+  cursor = b;
+  while (cursor) {
+    if (ancestors.has(cursor)) {
+      return getElementDepth(cursor);
+    }
+    cursor = cursor.parentElement;
+  }
+
+  return 0;
+}
+
+function isLikelyFeatureImageInput(input) {
+  return Boolean(input.closest('[data-test-feature-image-uploader], .gh-editor-feature-image, .settings-menu-pane, .gh-editor-settings, aside'));
+}
+
+function findBestGhostImageInput(contextImage) {
+  const candidates = Array.from(document.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
+  if (!candidates.length) return null;
+
+  const cardContainer = contextImage instanceof Element
+    ? contextImage.closest('figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]')
+    : null;
+
+  if (cardContainer) {
+    const localInput = cardContainer.querySelector('input[type="file"]');
+    if (localInput && isViableImageInput(localInput)) {
+      return localInput;
+    }
+  }
+
+  if (!(contextImage instanceof Element)) {
+    const nonFeature = candidates.filter((input) => !isLikelyFeatureImageInput(input));
+    return nonFeature[nonFeature.length - 1] || candidates[candidates.length - 1];
+  }
+
+  const contextRect = contextImage.getBoundingClientRect();
+  let best = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  candidates.forEach((input) => {
+    const rect = input.getBoundingClientRect();
+    const dx = rect.left - contextRect.left;
+    const dy = rect.top - contextRect.top;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const commonAncestorDepth = getCommonAncestorDepth(contextImage, input);
+    const featurePenalty = isLikelyFeatureImageInput(input) ? 5000 : 0;
+
+    const score = commonAncestorDepth * 100 - distance - featurePenalty;
+    if (score > bestScore) {
+      best = input;
+      bestScore = score;
+    }
+  });
+
+  return best || candidates[candidates.length - 1];
+}
+
+function resolveOutputDimensions(sourceWidth, sourceHeight, widthValue, heightValue) {
+  const parsedWidth = Number.parseInt(widthValue, 10);
+  const parsedHeight = Number.parseInt(heightValue, 10);
+  const hasWidth = Number.isFinite(parsedWidth) && parsedWidth > 0;
+  const hasHeight = Number.isFinite(parsedHeight) && parsedHeight > 0;
+
+  if (hasWidth && hasHeight) {
+    return { width: parsedWidth, height: parsedHeight };
+  }
+
+  if (hasWidth) {
+    const ratio = sourceHeight / sourceWidth;
+    return { width: parsedWidth, height: Math.max(1, Math.round(parsedWidth * ratio)) };
+  }
+
+  if (hasHeight) {
+    const ratio = sourceWidth / sourceHeight;
+    return { width: Math.max(1, Math.round(parsedHeight * ratio)), height: parsedHeight };
+  }
+
+  return { width: sourceWidth, height: sourceHeight };
+}
+
+
+
+
+
+function downloadFile(file) {
+  const url = URL.createObjectURL(file);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = file.name;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function buildOutputFile(canvas, originalName, mimeType, outputWidth, outputHeight) {
+  const outputCanvas = document.createElement("canvas");
+  outputCanvas.width = outputWidth;
+  outputCanvas.height = outputHeight;
+
+  const outputCtx = outputCanvas.getContext("2d");
+  if (!outputCtx) return Promise.resolve(null);
+
+  outputCtx.drawImage(canvas, 0, 0, outputWidth, outputHeight);
+
+  return new Promise((resolve) => {
+    outputCanvas.toBlob((blob) => {
+      if (!blob) {
+        resolve(null);
+        return;
+      }
+
+      const basename = originalName.replace(/\.[^.]+$/, "") || "image";
+      const extension = inferExtensionFromMimeType(mimeType);
+      const filename = `${basename}.${extension}`;
+
+      resolve(new File([blob], filename, {
+        type: mimeType,
+        lastModified: Date.now()
+      }));
+    }, mimeType);
+  });
+}
+
+async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null }) {
+  const { modal, image, cancelButton, applyButton, widthInput, heightInput, formatSelect } = createModal(imageSrc, {
+    mode,
+    fileName: originalFile.name
+  });
+
+  formatSelect.value = inferExtensionFromMimeType(originalFile.type || DEFAULT_OUTPUT_MIME);
+
   const cropper = new Cropper(image, {
     viewMode: 1,
     autoCropArea: 1,
@@ -59,39 +274,95 @@ globalThis.openEditor = function openEditor(imageSrc, input, originalFile) {
     modal.remove();
   }
 
+  async function apply() {
+    const cropCanvas = cropper.getCroppedCanvas();
+    const dimensions = resolveOutputDimensions(cropCanvas.width, cropCanvas.height, widthInput.value, heightInput.value);
+    const outputWidth = dimensions.width;
+    const outputHeight = dimensions.height;
+    const selectedFormat = formatSelect.value;
+    const mimeType = OUTPUT_FORMATS[selectedFormat] || DEFAULT_OUTPUT_MIME;
+
+    const outputFile = await buildOutputFile(cropCanvas, originalFile.name, mimeType, outputWidth, outputHeight);
+    cleanup();
+
+    if (!outputFile) {
+      if (input) {
+        updateInputWithFile(input, originalFile);
+      }
+      return;
+    }
+
+    if (input) {
+      updateInputWithFile(input, outputFile);
+      return;
+    }
+
+    const ghostInput = findBestGhostImageInput(contextImage);
+    if (ghostInput) {
+      console.info("[ghost-image-editor] applying context edit to Ghost input", ghostInput);
+      updateInputWithFile(ghostInput, outputFile);
+      return;
+    }
+
+    console.warn("[ghost-image-editor] no Ghost image input found; downloading file instead");
+    downloadFile(outputFile);
+  }
+
   cancelButton.addEventListener("click", () => {
     cleanup();
-    updateInputWithFile(input, originalFile);
+    if (input) {
+      updateInputWithFile(input, originalFile);
+    }
   });
 
   applyButton.addEventListener("click", () => {
-    const canvas = cropper.getCroppedCanvas();
-
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        cleanup();
-        updateInputWithFile(input, originalFile);
-        return;
-      }
-
-      const croppedFile = new File([blob], originalFile.name, {
-        type: originalFile.type || "image/png",
-        lastModified: Date.now()
-      });
-
-      cleanup();
-      updateInputWithFile(input, croppedFile);
-    }, originalFile.type || "image/png");
+    apply();
   });
 
   modal.addEventListener("click", (event) => {
     if (event.target === modal) {
       cleanup();
-      updateInputWithFile(input, originalFile);
+      if (input) {
+        updateInputWithFile(input, originalFile);
+      }
     }
   });
+}
+
+globalThis.openEditor = function openEditor(imageSrc, input, originalFile) {
+  launchEditor({ imageSrc, input, originalFile, mode: "upload" });
 };
 
-globalThis.openEditorFromContext = function openEditorFromContext(imageSrc) {
-  window.open(imageSrc, "_blank", "noopener,noreferrer");
+globalThis.openEditorFromContext = async function openEditorFromContext(imageSrc) {
+  try {
+    const response = await fetch(imageSrc, { credentials: "include" });
+    if (!response.ok) {
+      throw new Error(`Unable to load image: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const mimeType = blob.type || DEFAULT_OUTPUT_MIME;
+    if (!mimeType.startsWith("image/")) {
+      throw new Error("Selected resource is not an image");
+    }
+
+    const url = new URL(imageSrc, window.location.href);
+    const sourceName = url.pathname.split("/").pop() || "image";
+    const contextFile = new File([blob], sourceName, {
+      type: mimeType,
+      lastModified: Date.now()
+    });
+
+    const objectUrl = URL.createObjectURL(blob);
+    const contextImage = globalThis.__ghostImageEditorContextImage;
+    launchEditor({
+      imageSrc: objectUrl,
+      originalFile: contextFile,
+      mode: "context",
+      contextImage
+    });
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  } catch (error) {
+    console.warn("[ghost-image-editor] failed to open context editor", error);
+  }
 };
