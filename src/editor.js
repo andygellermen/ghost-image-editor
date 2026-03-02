@@ -12,7 +12,7 @@ const OUTPUT_FORMATS = {
 };
 
 const FEATURE_IMAGE_SELECTORS = "[data-test-feature-image-uploader], .gh-editor-feature-image, .gh-editor-settings, .settings-menu, .settings-menu-pane, .settings-menu-container, .gh-editor-settings-container, aside";
-const CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card";
+const CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card, .gh-editor-feature-image-container, .gh-editor-feature-image";
 const CONTEXT_ROOT_SELECTORS = ".koenig-editor, .gh-koenig-editor, .kg-prose, .kg-card, main";
 const UNSPLASH_DOMAIN = "images.unsplash.com";
 const CARD_TOOLBAR_SELECTOR = "[data-kg-card-toolbar=\"image\"]";
@@ -72,6 +72,7 @@ const I18N_MESSAGES = {
     originalSize: "Original file size",
     newSize: "New file size",
     editedAttributionSuffix: "(image edited afterwards)",
+    currentCropDimensions: "Current crop dimensions",
     by: "Photo by"
   },
   de: {
@@ -89,6 +90,7 @@ const I18N_MESSAGES = {
     originalSize: "Originale Dateigröße",
     newSize: "Neue Dateigröße",
     editedAttributionSuffix: "(Bild nachträglich bearbeitet)",
+    currentCropDimensions: "Aktuelle Zuschnitt-Abmessungen",
     by: "Foto von"
   }
 };
@@ -99,6 +101,13 @@ function getLocale() {
 }
 
 function t(key, fallback) {
+  try {
+    const runtimeValue = chrome?.i18n?.getMessage?.(key);
+    if (runtimeValue) return runtimeValue;
+  } catch (_error) {
+    // no-op when runtime i18n is unavailable
+  }
+
   const locale = getLocale();
   return I18N_MESSAGES[locale]?.[key] || I18N_MESSAGES.en[key] || fallback;
 }
@@ -166,6 +175,7 @@ function createModal(imageSrc, options = {}) {
       <div class="editor-hints">
         <p class="editor-hint">${t("outputFile", "Output file")}: <strong>${fileName}</strong></p>
         <p class="editor-hint">${t("originalDimensions", "Original dimensions")}: <strong>${originalWidth}×${originalHeight}</strong></p>
+        <p class="editor-hint">${t("currentCropDimensions", "Current crop dimensions")}: <strong data-value-crop-dimensions>${originalWidth}×${originalHeight}</strong></p>
         <p class="editor-hint">${t("originalSize", "Original file size")}: <strong>${formatBytes(originalSize)}</strong></p>
         <p class="editor-hint" data-hint-new-size hidden>${t("newSize", "New file size")}: <strong data-value>–</strong></p>
       </div>
@@ -184,7 +194,8 @@ function createModal(imageSrc, options = {}) {
     heightInput: modal.querySelector('[data-setting="height"]'),
     formatSelect: modal.querySelector('[data-setting="format"]'),
     newSizeHint: modal.querySelector('[data-hint-new-size]'),
-    newSizeValue: modal.querySelector('[data-hint-new-size] [data-value]')
+    newSizeValue: modal.querySelector('[data-hint-new-size] [data-value]'),
+    cropDimensionsValue: modal.querySelector('[data-value-crop-dimensions]')
   };
 }
 
@@ -268,6 +279,19 @@ function activateContextCard(contextImage) {
 }
 
 
+
+function findCaptionEditor(container) {
+  if (!(container instanceof Element)) return null;
+
+  const cardCaption = container.querySelector('[data-testid="image-caption-editor"] .kg-prose');
+  if (cardCaption instanceof HTMLElement) return cardCaption;
+
+  const featureCaption = container.querySelector('.gh-editor-feature-image-caption-container .kg-prose');
+  if (featureCaption instanceof HTMLElement) return featureCaption;
+
+  return null;
+}
+
 function findCardImageInput(contextCard) {
   if (!(contextCard instanceof Element)) return null;
 
@@ -275,6 +299,12 @@ function findCardImageInput(contextCard) {
   if (toolbarInput && isViableImageInput(toolbarInput)) {
     debugLog("selected strict card toolbar input", { input: describeInput(toolbarInput) });
     return toolbarInput;
+  }
+
+  const featureInput = contextCard.querySelector('.x-file-input[data-test-file-input="feature-image"] input[type="file"], input[data-test-file-input="feature-image"]');
+  if (featureInput && isViableImageInput(featureInput)) {
+    debugLog("selected feature image input", { input: describeInput(featureInput) });
+    return featureInput;
   }
 
   const anyLocal = contextCard.querySelector('input[type="file"][name="image-input"], input[type="file"]');
@@ -290,7 +320,7 @@ function findCardImageInput(contextCard) {
 function getCaptionState(contextCard) {
   if (!(contextCard instanceof Element)) return null;
 
-  const captionEditor = contextCard.querySelector('[data-testid="image-caption-editor"] .kg-prose');
+  const captionEditor = findCaptionEditor(contextCard);
   const rawText = captionEditor?.textContent?.trim() || "";
   const existingPhotographerLink = captionEditor?.querySelector('a[href*="unsplash.com/@"]');
   const existingSourceLink = captionEditor?.querySelector('a[href*="unsplash.com"]');
@@ -305,13 +335,31 @@ function getCaptionState(contextCard) {
 
 function setCaptionContent(contextCard, html) {
   if (!(contextCard instanceof Element) || !html) return;
-  const captionEditor = contextCard.querySelector('[data-testid="image-caption-editor"] .kg-prose');
+  const captionEditor = findCaptionEditor(contextCard);
   if (!(captionEditor instanceof HTMLElement)) return;
 
   captionEditor.innerHTML = html;
   const editable = captionEditor.closest('[contenteditable="true"]') || captionEditor;
   editable.dispatchEvent(new Event("input", { bubbles: true }));
   editable.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+
+function resolveLiveContextCard(contextCard, contextImage) {
+  if (contextCard instanceof Element && contextCard.isConnected) return contextCard;
+
+  const rememberedImage = globalThis.__ghostImageEditorContextImage;
+  if (rememberedImage instanceof Element) {
+    const rememberedCard = rememberedImage.closest(CARD_SELECTORS);
+    if (rememberedCard instanceof Element) return rememberedCard;
+  }
+
+  if (contextImage instanceof Element) {
+    const byContext = contextImage.closest(CARD_SELECTORS);
+    if (byContext instanceof Element) return byContext;
+  }
+
+  return document.querySelector('[data-kg-card="image"][data-kg-card-selected="true"], .gh-editor-feature-image-container') || null;
 }
 
 function findBestGhostImageInput(contextImage, contextCard = null) {
@@ -531,7 +579,8 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     heightInput,
     formatSelect,
     newSizeHint,
-    newSizeValue
+    newSizeValue,
+    cropDimensionsValue
   } = createModal(imageSrc, {
     mode,
     fileName: originalFile.name,
@@ -557,6 +606,9 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     const outputFile = await buildOutputFile(cropCanvas, originalFile.name, mimeType, dimensions.width, dimensions.height);
 
     const cropData = cropper.getData(true);
+    if (cropDimensionsValue) {
+      cropDimensionsValue.textContent = `${Math.max(1, Math.round(cropData.width))}×${Math.max(1, Math.round(cropData.height))}`;
+    }
     const isCropped = Math.round(cropData.width) !== originalDimensions.width || Math.round(cropData.height) !== originalDimensions.height;
     const isResized = dimensions.width !== cropCanvas.width || dimensions.height !== cropCanvas.height;
 
@@ -597,13 +649,15 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     }
 
     const sourceWasUnsplash = isUnsplashImageUrl(sourceImageUrl || contextImage?.getAttribute?.("src") || "");
-    const captionState = getCaptionState(contextCard);
+    const initialCard = resolveLiveContextCard(contextCard, contextImage);
+    const captionState = getCaptionState(initialCard);
 
     activateContextCard(contextImage);
     await new Promise((resolve) => setTimeout(resolve, 80));
 
-    const strictCardInput = findCardImageInput(contextCard);
-    const ghostInput = strictCardInput || findBestGhostImageInput(contextImage, contextCard);
+    const liveCard = resolveLiveContextCard(contextCard, contextImage);
+    const strictCardInput = findCardImageInput(liveCard);
+    const ghostInput = strictCardInput || findBestGhostImageInput(contextImage, liveCard);
     debugLog("context apply input resolution", {
       strictCardInput: describeInput(strictCardInput),
       selectedInput: describeInput(ghostInput),
@@ -612,7 +666,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     if (ghostInput) {
       updateInputWithFile(ghostInput, outputFile);
       if (sourceWasUnsplash) {
-        setTimeout(() => updateUnsplashCaption(contextCard, captionState), 120);
+        setTimeout(() => updateUnsplashCaption(resolveLiveContextCard(contextCard, contextImage), captionState), 120);
       }
       return;
     }
@@ -632,6 +686,9 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     refreshSizePreview();
   });
   formatSelect.addEventListener("change", () => {
+    refreshSizePreview();
+  });
+  image.addEventListener("crop", () => {
     refreshSizePreview();
   });
   image.addEventListener("cropend", () => {
