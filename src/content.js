@@ -12,10 +12,12 @@ function rememberContextImageTarget(event) {
   const target = event.target;
   if (!(target instanceof HTMLImageElement)) {
     globalThis.__ghostImageEditorContextImage = null;
+    globalThis.__ghostImageEditorContextCard = null;
     return;
   }
 
   globalThis.__ghostImageEditorContextImage = target;
+  globalThis.__ghostImageEditorContextCard = target.closest('.kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card') || null;
 }
 
 document.addEventListener("contextmenu", rememberContextImageTarget, true);

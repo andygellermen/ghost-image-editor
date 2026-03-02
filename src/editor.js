@@ -191,7 +191,7 @@ function activateContextCard(contextImage) {
   card.click();
 }
 
-function findBestGhostImageInput(contextImage) {
+function findBestGhostImageInput(contextImage, contextCard = null) {
   const allCandidates = Array.from(document.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
   if (!allCandidates.length) return null;
 
@@ -201,9 +201,11 @@ function findBestGhostImageInput(contextImage) {
     : allCandidates;
   const candidates = scopedCandidates.length ? scopedCandidates : allCandidates;
 
-  const cardContainer = contextImage instanceof Element
-    ? contextImage.closest('figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]')
-    : null;
+  const cardContainer = contextCard instanceof Element
+    ? contextCard
+    : contextImage instanceof Element
+      ? contextImage.closest('figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]')
+      : null;
 
   if (cardContainer) {
     const localInputs = Array.from(cardContainer.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
@@ -227,11 +229,7 @@ function findBestGhostImageInput(contextImage) {
   });
 
   if (!(contextImage instanceof Element)) {
-    const preferred = visibleCandidates.filter((input) => !isLikelyFeatureImageInput(input) && !isLikelyAppendUploader(input));
-    if (preferred.length) return preferred[preferred.length - 1];
-
-    const nonFeature = visibleCandidates.filter((input) => !isLikelyFeatureImageInput(input));
-    return nonFeature[nonFeature.length - 1] || null;
+    return null;
   }
 
   const pool = visibleCandidates.length ? visibleCandidates : candidates;
@@ -328,7 +326,7 @@ function buildOutputFile(canvas, originalName, mimeType, outputWidth, outputHeig
   });
 }
 
-async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null }) {
+async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null, contextCard = null }) {
   const { modal, image, cancelButton, applyButton, widthInput, heightInput, formatSelect } = createModal(imageSrc, {
     mode,
     fileName: originalFile.name
@@ -370,7 +368,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
 
     activateContextCard(contextImage);
     await new Promise((resolve) => setTimeout(resolve, 50));
-    const ghostInput = findBestGhostImageInput(contextImage);
+    const ghostInput = findBestGhostImageInput(contextImage, contextCard);
     if (ghostInput) {
       console.info("[ghost-image-editor] applying context edit to Ghost input", ghostInput);
       updateInputWithFile(ghostInput, outputFile);
@@ -424,11 +422,13 @@ globalThis.openEditorFromContext = async function openEditorFromContext(imageSrc
 
     const objectUrl = URL.createObjectURL(blob);
     const contextImage = globalThis.__ghostImageEditorContextImage;
+    const contextCard = globalThis.__ghostImageEditorContextCard;
     launchEditor({
       imageSrc: objectUrl,
       originalFile: contextFile,
       mode: "context",
-      contextImage
+      contextImage,
+      contextCard
     });
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
   } catch (error) {
