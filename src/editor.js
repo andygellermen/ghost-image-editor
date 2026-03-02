@@ -116,7 +116,7 @@ function findBestGhostImageInput(contextImage) {
   if (!candidates.length) return null;
 
   if (contextImage instanceof Element) {
-    const scopedContainer = contextImage.closest("figure, .kg-image-card, .koenig-card, .kg-card");
+    const scopedContainer = contextImage.closest("figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]");
     if (scopedContainer) {
       const localInput = scopedContainer.querySelector('input[type="file"]');
       if (localInput && isViableImageInput(localInput)) {
@@ -124,31 +124,57 @@ function findBestGhostImageInput(contextImage) {
       }
     }
 
-    const visibleCandidates = candidates.filter((input) => {
-      const style = window.getComputedStyle(input);
-      return style.display !== "none" && style.visibility !== "hidden";
+    const contextRect = contextImage.getBoundingClientRect();
+    let best = candidates[candidates.length - 1];
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    candidates.forEach((input) => {
+      const rect = input.getBoundingClientRect();
+      const dx = rect.left - contextRect.left;
+      const dy = rect.top - contextRect.top;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance < bestDistance) {
+        best = input;
+        bestDistance = distance;
+      }
     });
 
-    if (visibleCandidates.length) {
-      const contextRect = contextImage.getBoundingClientRect();
-      let best = visibleCandidates[0];
-      let bestDistance = Number.POSITIVE_INFINITY;
-      visibleCandidates.forEach((input) => {
-        const rect = input.getBoundingClientRect();
-        const dx = rect.left - contextRect.left;
-        const dy = rect.top - contextRect.top;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance < bestDistance) {
-          best = input;
-          bestDistance = distance;
-        }
-      });
-      return best;
-    }
+    return best;
   }
 
-  return candidates[0];
+  return candidates[candidates.length - 1];
 }
+
+function resolveOutputDimensions(sourceWidth, sourceHeight, widthValue, heightValue) {
+  const parsedWidth = Number.parseInt(widthValue, 10);
+  const parsedHeight = Number.parseInt(heightValue, 10);
+  const hasWidth = Number.isFinite(parsedWidth) && parsedWidth > 0;
+  const hasHeight = Number.isFinite(parsedHeight) && parsedHeight > 0;
+
+  if (hasWidth && hasHeight) {
+    return { width: parsedWidth, height: parsedHeight };
+  }
+
+  if (hasWidth) {
+    const ratio = sourceHeight / sourceWidth;
+    return { width: parsedWidth, height: Math.max(1, Math.round(parsedWidth * ratio)) };
+  }
+
+  if (hasHeight) {
+    const ratio = sourceWidth / sourceHeight;
+    return { width: Math.max(1, Math.round(parsedHeight * ratio)), height: parsedHeight };
+  }
+
+  return { width: sourceWidth, height: sourceHeight };
+}
+
+function focusContextImage(contextImage) {
+  if (!(contextImage instanceof HTMLElement)) return;
+  const container = contextImage.closest("figure, .kg-image-card, .koenig-card, .kg-card, [data-kg-card]") || contextImage;
+  container.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  container.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+}
+
 
 function downloadFile(file) {
   const url = URL.createObjectURL(file);
@@ -211,8 +237,9 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
 
   async function apply() {
     const cropCanvas = cropper.getCroppedCanvas();
-    const outputWidth = Number.parseInt(widthInput.value, 10) || cropCanvas.width;
-    const outputHeight = Number.parseInt(heightInput.value, 10) || cropCanvas.height;
+    const dimensions = resolveOutputDimensions(cropCanvas.width, cropCanvas.height, widthInput.value, heightInput.value);
+    const outputWidth = dimensions.width;
+    const outputHeight = dimensions.height;
     const selectedFormat = formatSelect.value;
     const mimeType = OUTPUT_FORMATS[selectedFormat] || DEFAULT_OUTPUT_MIME;
 
@@ -231,6 +258,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
       return;
     }
 
+    focusContextImage(contextImage);
     const ghostInput = findBestGhostImageInput(contextImage);
     if (ghostInput) {
       updateInputWithFile(ghostInput, outputFile);
