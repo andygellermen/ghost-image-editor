@@ -15,6 +15,15 @@ function rememberContextImageTarget(event) {
 
 document.addEventListener("contextmenu", rememberContextImageTarget, true);
 
+function restoreOriginalFile(input, file) {
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  input.dataset.editorApplying = "true";
+  input.files = transfer.files;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 function attachUploadListener() {
   const inputs = document.querySelectorAll('input[type="file"]');
 
@@ -41,7 +50,14 @@ function attachUploadListener() {
       event.stopImmediatePropagation();
 
       const reader = new FileReader();
-      reader.onload = () => window.openEditor(reader.result, input, file);
+      reader.onload = () => {
+        try {
+          openEditor(reader.result, input, file);
+        } catch (error) {
+          console.warn(`${EXTENSION_LOG_PREFIX} failed to open editor; restoring original file`, error);
+          restoreOriginalFile(input, file);
+        }
+      };
       reader.readAsDataURL(file);
     }, true);
   });

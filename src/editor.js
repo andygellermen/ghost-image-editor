@@ -12,7 +12,15 @@ const OUTPUT_FORMATS = {
 };
 
 function t(key, fallback) {
-  return chrome.i18n.getMessage(key) || fallback;
+  try {
+    if (!chrome?.runtime?.id || !chrome?.i18n?.getMessage) {
+      return fallback;
+    }
+    return chrome.i18n.getMessage(key) || fallback;
+  } catch (error) {
+    console.warn("[ghost-image-editor] i18n unavailable, using fallback", error);
+    return fallback;
+  }
 }
 
 function removeModal() {
@@ -330,7 +338,12 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
 }
 
 globalThis.openEditor = function openEditor(imageSrc, input, originalFile) {
-  launchEditor({ imageSrc, input, originalFile, mode: "upload" });
+  try {
+    launchEditor({ imageSrc, input, originalFile, mode: "upload" });
+  } catch (error) {
+    console.warn("[ghost-image-editor] failed to launch upload editor", error);
+    throw error;
+  }
 };
 
 globalThis.openEditorFromContext = async function openEditorFromContext(imageSrc) {
