@@ -15,6 +15,7 @@ function rememberContextImageTarget(event) {
     globalThis.__ghostImageEditorContextImage = null;
     globalThis.__ghostImageEditorContextCard = null;
     globalThis.__ghostImageEditorContextKind = null;
+    globalThis.__ghostImageEditorContextSrc = "";
     return;
   }
 
@@ -24,6 +25,7 @@ function rememberContextImageTarget(event) {
   globalThis.__ghostImageEditorContextImage = target;
   globalThis.__ghostImageEditorContextCard = contextCard;
   globalThis.__ghostImageEditorContextKind = contextKind;
+  globalThis.__ghostImageEditorContextSrc = target.currentSrc || target.src || "";
 }
 
 document.addEventListener("contextmenu", rememberContextImageTarget, true);

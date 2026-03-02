@@ -2,13 +2,29 @@ const manifestVersion = chrome.runtime.getManifest().version;
 
 console.info(`[ghost-image-editor] background loaded v${manifestVersion}`);
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "editImage",
-    title: chrome.i18n.getMessage("contextEdit"),
-    contexts: ["image"]
+function ensureContextMenu() {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "editImage",
+      title: chrome.i18n.getMessage("contextEdit"),
+      contexts: ["image"]
+    }, () => {
+      if (chrome.runtime.lastError) {
+        console.warn("[ghost-image-editor] failed to create context menu", chrome.runtime.lastError.message);
+      }
+    });
   });
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  ensureContextMenu();
 });
+
+chrome.runtime.onStartup.addListener(() => {
+  ensureContextMenu();
+});
+
+ensureContextMenu();
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== "editImage" || !tab?.id || !info.srcUrl) return;

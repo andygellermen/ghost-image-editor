@@ -47,6 +47,14 @@ function debugLog(message, details = null) {
   console.info(`${LOG_PREFIX} [debug] ${message}`, details);
 }
 
+
+function escapeForAttributeSelector(value) {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+  return String(value);
+}
+
 function describeInput(input) {
   if (!(input instanceof HTMLInputElement)) return "none";
   const name = input.getAttribute("name") || "";
@@ -345,7 +353,7 @@ function setCaptionContent(contextCard, html) {
 }
 
 
-function resolveLiveContextCard(contextCard, contextImage, contextKind = "card") {
+function resolveLiveContextCard(contextCard, contextImage, contextKind = "card", contextSourceSrc = "") {
   if (contextCard instanceof Element && contextCard.isConnected) return contextCard;
 
   const rememberedImage = globalThis.__ghostImageEditorContextImage;
@@ -357,6 +365,16 @@ function resolveLiveContextCard(contextCard, contextImage, contextKind = "card")
   if (contextImage instanceof Element) {
     const byContext = contextImage.closest(CARD_SELECTORS);
     if (byContext instanceof Element) return byContext;
+  }
+
+  if (contextSourceSrc) {
+    const matchingImage = document.querySelector(`img[src="${escapeForAttributeSelector(contextSourceSrc)}"]`)
+      || Array.from(document.querySelectorAll("img[src],img[currentSrc]")).find((img) => {
+        const candidate = img.currentSrc || img.getAttribute("src") || "";
+        return candidate === contextSourceSrc;
+      });
+    const matchingCard = matchingImage?.closest?.(CARD_SELECTORS);
+    if (matchingCard instanceof Element) return matchingCard;
   }
 
   if (contextKind === "feature") {
@@ -572,7 +590,7 @@ function fetchImageFromBackground(imageSrc) {
   });
 }
 
-async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null, contextCard = null, contextKind = "card", sourceImageUrl = "" }) {
+async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null, contextCard = null, contextKind = "card", contextSourceSrc = "", sourceImageUrl = "" }) {
   const originalDimensions = await getImageDimensionsFromElement(imageSrc, contextImage);
   const {
     modal,
@@ -653,25 +671,26 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     }
 
     const sourceWasUnsplash = isUnsplashImageUrl(sourceImageUrl || contextImage?.getAttribute?.("src") || "");
-    const initialCard = resolveLiveContextCard(contextCard, contextImage, contextKind);
+    const initialCard = resolveLiveContextCard(contextCard, contextImage, contextKind, contextSourceSrc);
     const captionState = getCaptionState(initialCard);
 
     activateContextCard(contextImage);
     await new Promise((resolve) => setTimeout(resolve, 80));
 
-    const liveCard = resolveLiveContextCard(contextCard, contextImage, contextKind);
+    const liveCard = resolveLiveContextCard(contextCard, contextImage, contextKind, contextSourceSrc);
     const strictCardInput = findCardImageInput(liveCard);
     const ghostInput = strictCardInput || findBestGhostImageInput(contextImage, liveCard);
     debugLog("context apply input resolution", {
       strictCardInput: describeInput(strictCardInput),
       selectedInput: describeInput(ghostInput),
       sourceWasUnsplash,
-      contextKind
+      contextKind,
+      contextSourceSrc
     });
     if (ghostInput) {
       updateInputWithFile(ghostInput, outputFile);
       if (sourceWasUnsplash) {
-        setTimeout(() => updateUnsplashCaption(resolveLiveContextCard(contextCard, contextImage, contextKind), captionState), 120);
+        setTimeout(() => updateUnsplashCaption(resolveLiveContextCard(contextCard, contextImage, contextKind, contextSourceSrc), captionState), 120);
       }
       return;
     }
@@ -741,6 +760,7 @@ globalThis.openEditorFromContext = async function openEditorFromContext(imageSrc
     const contextImage = globalThis.__ghostImageEditorContextImage;
     const contextCard = globalThis.__ghostImageEditorContextCard;
     const contextKind = globalThis.__ghostImageEditorContextKind || "card";
+    const contextSourceSrc = globalThis.__ghostImageEditorContextSrc || "";
     launchEditor({
       imageSrc: objectUrl,
       originalFile: contextFile,
@@ -748,6 +768,7 @@ globalThis.openEditorFromContext = async function openEditorFromContext(imageSrc
       contextImage,
       contextCard,
       contextKind,
+      contextSourceSrc,
       sourceImageUrl: imageSrc
     });
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
