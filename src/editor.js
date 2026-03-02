@@ -57,24 +57,6 @@ function createModal(imageSrc, options = {}) {
           </select>
         </label>
       </div>
-      <div class="editor-settings">
-        <label>
-          Width
-          <input type="number" min="1" step="1" data-setting="width" placeholder="Auto">
-        </label>
-        <label>
-          Height
-          <input type="number" min="1" step="1" data-setting="height" placeholder="Auto">
-        </label>
-        <label>
-          Format
-          <select data-setting="format">
-            <option value="png">PNG</option>
-            <option value="jpg">JPG</option>
-            <option value="webp">WEBP</option>
-          </select>
-        </label>
-      </div>
       <div class="editor-controls">
         <button type="button" data-action="cancel">${t("cancel", "Cancel")}</button>
         <button type="button" data-action="apply">${applyLabel}</button>
@@ -84,6 +66,7 @@ function createModal(imageSrc, options = {}) {
   `;
 
   document.body.appendChild(modal);
+  removeDuplicateEditorSections(modal);
 
   return {
     modal,
@@ -94,6 +77,22 @@ function createModal(imageSrc, options = {}) {
     heightInput: modal.querySelector('[data-setting="height"]'),
     formatSelect: modal.querySelector('[data-setting="format"]')
   };
+}
+
+function removeDuplicateEditorSections(modal) {
+  const settings = modal.querySelectorAll(".editor-settings");
+  settings.forEach((section, index) => {
+    if (index > 0) {
+      section.remove();
+    }
+  });
+
+  const hints = modal.querySelectorAll(".editor-hint");
+  hints.forEach((hint, index) => {
+    if (index > 0) {
+      hint.remove();
+    }
+  });
 }
 
 function updateInputWithFile(input, file) {
