@@ -9,8 +9,21 @@ try {
 }
 console.info(`${EXTENSION_LOG_PREFIX} content script loaded v${manifestVersion}`);
 
+
+function findContextImageFromTarget(target) {
+  if (target instanceof HTMLImageElement) return target;
+  if (!(target instanceof Element)) return null;
+
+  const insideImage = target.closest("img");
+  if (insideImage instanceof HTMLImageElement) return insideImage;
+
+  const container = target.closest(CONTEXT_CARD_SELECTORS);
+  const containerImage = container?.querySelector?.("img[src], img[currentSrc]");
+  return containerImage instanceof HTMLImageElement ? containerImage : null;
+}
+
 function rememberContextImageTarget(event) {
-  const target = event.target;
+  const target = findContextImageFromTarget(event.target);
   if (!(target instanceof HTMLImageElement)) {
     globalThis.__ghostImageEditorContextImage = null;
     globalThis.__ghostImageEditorContextCard = null;
@@ -86,13 +99,15 @@ try {
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type !== "OPEN_EDITOR_FROM_CONTEXT") return;
     const openEditorFromContext = globalThis.openEditorFromContext || window.openEditorFromContext;
-    if (typeof openEditorFromContext === "function") {
-      openEditorFromContext(message.imageSrc);
+    const contextSrc = globalThis.__ghostImageEditorContextSrc || globalThis.__ghostImageEditorContextImage?.currentSrc || globalThis.__ghostImageEditorContextImage?.src || "";
+    const imageSrc = message.imageSrc || contextSrc;
+    if (typeof openEditorFromContext === "function" && imageSrc) {
+      openEditorFromContext(imageSrc);
       return;
     }
 
     console.warn(`${EXTENSION_LOG_PREFIX} openEditorFromContext hook is missing; opening image URL directly`);
-    window.open(message.imageSrc, "_blank", "noopener,noreferrer");
+    if (imageSrc) window.open(imageSrc, "_blank", "noopener,noreferrer");
   });
 } catch (error) {
   console.warn(`${EXTENSION_LOG_PREFIX} runtime listener unavailable`, error);

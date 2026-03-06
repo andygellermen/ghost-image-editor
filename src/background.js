@@ -7,7 +7,7 @@ function ensureContextMenu() {
     chrome.contextMenus.create({
       id: "editImage",
       title: chrome.i18n.getMessage("contextEdit"),
-      contexts: ["image"]
+      contexts: ["image", "all"]
     }, () => {
       if (chrome.runtime.lastError) {
         console.warn("[ghost-image-editor] failed to create context menu", chrome.runtime.lastError.message);
@@ -27,11 +27,11 @@ chrome.runtime.onStartup.addListener(() => {
 ensureContextMenu();
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== "editImage" || !tab?.id || !info.srcUrl) return;
+  if (info.menuItemId !== "editImage" || !tab?.id) return;
 
   chrome.tabs.sendMessage(tab.id, {
     type: "OPEN_EDITOR_FROM_CONTEXT",
-    imageSrc: info.srcUrl
+    imageSrc: info.srcUrl || ""
   });
 });
 

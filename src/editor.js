@@ -300,7 +300,7 @@ function findCaptionEditor(container) {
   return null;
 }
 
-function findCardImageInput(contextCard) {
+function findCardImageInput(contextCard, contextKind = "card") {
   if (!(contextCard instanceof Element)) return null;
 
   const toolbarInput = contextCard.querySelector(`${CARD_TOOLBAR_SELECTOR} input[type="file"][name="image-input"]`);
@@ -309,8 +309,11 @@ function findCardImageInput(contextCard) {
     return toolbarInput;
   }
 
+  const isFeatureCard = contextKind === "feature"
+    || Boolean(contextCard.closest('.gh-editor-feature-image-container, .gh-editor-feature-image'));
+
   const featureInput = contextCard.querySelector('.x-file-input[data-test-file-input="feature-image"] input[type="file"], input[data-test-file-input="feature-image"]');
-  if (featureInput && isViableImageInput(featureInput)) {
+  if (isFeatureCard && featureInput && isViableImageInput(featureInput)) {
     debugLog("selected feature image input", { input: describeInput(featureInput) });
     return featureInput;
   }
@@ -678,7 +681,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     await new Promise((resolve) => setTimeout(resolve, 80));
 
     const liveCard = resolveLiveContextCard(contextCard, contextImage, contextKind, contextSourceSrc);
-    const strictCardInput = findCardImageInput(liveCard);
+    const strictCardInput = findCardImageInput(liveCard, contextKind);
     const ghostInput = strictCardInput || findBestGhostImageInput(contextImage, liveCard);
     debugLog("context apply input resolution", {
       strictCardInput: describeInput(strictCardInput),
