@@ -1,6 +1,57 @@
 const EXTENSION_LOG_PREFIX = "[ghost-image-editor]";
 const CONTEXT_CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card, .gh-editor-feature-image-container, .gh-editor-feature-image";
 
+const UNSPLASH_HOST = "images.unsplash.com";
+const autoOpenedUnsplashImages = new Set();
+
+function isUnsplashImage(url) {
+  try {
+    const parsed = new URL(url, window.location.href);
+    return parsed.hostname === UNSPLASH_HOST;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function openEditorForUnsplashImage(image) {
+  if (!(image instanceof HTMLImageElement)) return;
+  const src = image.currentSrc || image.src || "";
+  if (!src || !isUnsplashImage(src) || autoOpenedUnsplashImages.has(src)) return;
+
+  const card = image.closest(CONTEXT_CARD_SELECTORS);
+  const kind = card?.closest?.(".gh-editor-feature-image-container, .gh-editor-feature-image") ? "feature" : "card";
+
+  autoOpenedUnsplashImages.add(src);
+  globalThis.__ghostImageEditorContextImage = image;
+  globalThis.__ghostImageEditorContextCard = card || null;
+  globalThis.__ghostImageEditorContextKind = kind;
+  globalThis.__ghostImageEditorContextSrc = src;
+
+  const openEditorFromContext = globalThis.openEditorFromContext || window.openEditorFromContext;
+  if (typeof openEditorFromContext === "function") {
+    setTimeout(() => openEditorFromContext(src), 60);
+    return;
+  }
+
+  autoOpenedUnsplashImages.delete(src);
+}
+
+
+function primeUnsplashImages() {
+  document.querySelectorAll('img[src*="images.unsplash.com"]').forEach((image) => {
+    if (image instanceof HTMLImageElement) {
+      const src = image.currentSrc || image.src || "";
+      if (src) autoOpenedUnsplashImages.add(src);
+    }
+  });
+}
+
+function scanForUnsplashImages() {
+  const images = document.querySelectorAll('img[src*="images.unsplash.com"]');
+  images.forEach((image) => openEditorForUnsplashImage(image));
+}
+
+
 let manifestVersion = "unknown";
 try {
   manifestVersion = chrome.runtime.getManifest().version;
@@ -113,7 +164,12 @@ try {
   console.warn(`${EXTENSION_LOG_PREFIX} runtime listener unavailable`, error);
 }
 
-const observer = new MutationObserver(() => attachUploadListener());
+const observer = new MutationObserver(() => {
+  attachUploadListener();
+  scanForUnsplashImages();
+});
 observer.observe(document.body, { childList: true, subtree: true });
 
 attachUploadListener();
+primeUnsplashImages();
+

@@ -387,7 +387,7 @@ function resolveLiveContextCard(contextCard, contextImage, contextKind = "card",
   return document.querySelector('[data-kg-card="image"][data-kg-card-selected="true"], .kg-image-card, [data-kg-card="image"]') || null;
 }
 
-function findBestGhostImageInput(contextImage, contextCard = null) {
+function findBestGhostImageInput(contextImage, contextCard = null, contextKind = "card") {
   const allCandidates = Array.from(document.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
   if (!allCandidates.length) {
     debugLog("no viable file inputs found in document");
@@ -399,6 +399,10 @@ function findBestGhostImageInput(contextImage, contextCard = null) {
     ? allCandidates.filter((input) => contextRoot.contains(input))
     : allCandidates;
   const candidates = scopedCandidates.length ? scopedCandidates : allCandidates;
+  const nonFeatureCandidates = contextKind === "feature"
+    ? candidates
+    : candidates.filter((input) => !isLikelyFeatureImageInput(input));
+  const preferredCandidates = nonFeatureCandidates.length ? nonFeatureCandidates : candidates;
 
   const cardContainer = contextCard instanceof Element
     ? contextCard
@@ -422,7 +426,7 @@ function findBestGhostImageInput(contextImage, contextCard = null) {
     }
   }
 
-  const visibleCandidates = candidates.filter((input) => {
+  const visibleCandidates = preferredCandidates.filter((input) => {
     const style = window.getComputedStyle(input);
     return style.display !== "none" && style.visibility !== "hidden";
   });
@@ -432,7 +436,7 @@ function findBestGhostImageInput(contextImage, contextCard = null) {
     return null;
   }
 
-  const pool = visibleCandidates.length ? visibleCandidates : candidates;
+  const pool = visibleCandidates.length ? visibleCandidates : preferredCandidates;
   const contextRect = contextImage.getBoundingClientRect();
   let best = null;
   let bestScore = Number.NEGATIVE_INFINITY;
@@ -443,7 +447,7 @@ function findBestGhostImageInput(contextImage, contextCard = null) {
     const dy = rect.top - contextRect.top;
     const distance = Math.sqrt(dx * dx + dy * dy);
     const commonAncestorDepth = getCommonAncestorDepth(contextImage, input);
-    const featurePenalty = isLikelyFeatureImageInput(input) ? 5000 : 0;
+    const featurePenalty = contextKind === "feature" ? 0 : (isLikelyFeatureImageInput(input) ? 15000 : 0);
     const appendPenalty = isLikelyAppendUploader(input) ? 2500 : 0;
 
     const score = commonAncestorDepth * 100 - distance - featurePenalty - appendPenalty;
@@ -682,7 +686,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
 
     const liveCard = resolveLiveContextCard(contextCard, contextImage, contextKind, contextSourceSrc);
     const strictCardInput = findCardImageInput(liveCard, contextKind);
-    const ghostInput = strictCardInput || findBestGhostImageInput(contextImage, liveCard);
+    const ghostInput = strictCardInput || findBestGhostImageInput(contextImage, liveCard, contextKind);
     debugLog("context apply input resolution", {
       strictCardInput: describeInput(strictCardInput),
       selectedInput: describeInput(ghostInput),
