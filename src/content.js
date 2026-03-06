@@ -1,5 +1,7 @@
 const EXTENSION_LOG_PREFIX = "[ghost-image-editor]";
 const CONTEXT_CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card, .gh-editor-feature-image-container, .gh-editor-feature-image";
+const ARTICLE_IMAGE_CARD_SELECTORS = '[data-kg-card="image"], .kg-image-card';
+const FEATURE_IMAGE_SELECTORS = ".gh-editor-feature-image-container, .gh-editor-feature-image";
 
 const UNSPLASH_HOST = "images.unsplash.com";
 const autoOpenedUnsplashImages = new Set();
@@ -13,13 +15,21 @@ function isUnsplashImage(url) {
   }
 }
 
+function isArticleImageCandidate(image) {
+  if (!(image instanceof HTMLImageElement)) return false;
+  if (image.closest(FEATURE_IMAGE_SELECTORS)) return false;
+  return Boolean(image.closest(ARTICLE_IMAGE_CARD_SELECTORS));
+}
+
 function openEditorForUnsplashImage(image) {
   if (!(image instanceof HTMLImageElement)) return;
+  if (!isArticleImageCandidate(image)) return;
+
   const src = image.currentSrc || image.src || "";
   if (!src || !isUnsplashImage(src) || autoOpenedUnsplashImages.has(src)) return;
 
   const card = image.closest(CONTEXT_CARD_SELECTORS);
-  const kind = card?.closest?.(".gh-editor-feature-image-container, .gh-editor-feature-image") ? "feature" : "card";
+  const kind = "card";
 
   autoOpenedUnsplashImages.add(src);
   globalThis.__ghostImageEditorContextImage = image;
@@ -36,21 +46,26 @@ function openEditorForUnsplashImage(image) {
   autoOpenedUnsplashImages.delete(src);
 }
 
-
 function primeUnsplashImages() {
   document.querySelectorAll('img[src*="images.unsplash.com"]').forEach((image) => {
-    if (image instanceof HTMLImageElement) {
+    if (image instanceof HTMLImageElement && isArticleImageCandidate(image)) {
       const src = image.currentSrc || image.src || "";
       if (src) autoOpenedUnsplashImages.add(src);
     }
   });
 }
 
-function scanForUnsplashImages() {
-  const images = document.querySelectorAll('img[src*="images.unsplash.com"]');
-  images.forEach((image) => openEditorForUnsplashImage(image));
-}
+function scanUnsplashImagesInNode(node) {
+  if (!(node instanceof Element)) return;
 
+  if (node.matches("img[src*='images.unsplash.com']")) {
+    openEditorForUnsplashImage(node);
+  }
+
+  node.querySelectorAll('img[src*="images.unsplash.com"]').forEach((image) => {
+    openEditorForUnsplashImage(image);
+  });
+}
 
 let manifestVersion = "unknown";
 try {
@@ -59,7 +74,6 @@ try {
   console.warn(`${EXTENSION_LOG_PREFIX} runtime unavailable while reading manifest version`, error);
 }
 console.info(`${EXTENSION_LOG_PREFIX} content script loaded v${manifestVersion}`);
-
 
 function findContextImageFromTarget(target) {
   if (target instanceof HTMLImageElement) return target;
@@ -84,7 +98,7 @@ function rememberContextImageTarget(event) {
   }
 
   const contextCard = target.closest(CONTEXT_CARD_SELECTORS) || null;
-  const contextKind = contextCard?.closest?.(".gh-editor-feature-image-container, .gh-editor-feature-image") ? "feature" : "card";
+  const contextKind = contextCard?.closest?.(FEATURE_IMAGE_SELECTORS) ? "feature" : "card";
 
   globalThis.__ghostImageEditorContextImage = target;
   globalThis.__ghostImageEditorContextCard = contextCard;
@@ -164,12 +178,13 @@ try {
   console.warn(`${EXTENSION_LOG_PREFIX} runtime listener unavailable`, error);
 }
 
-const observer = new MutationObserver(() => {
+const observer = new MutationObserver((mutations) => {
   attachUploadListener();
-  scanForUnsplashImages();
+  mutations.forEach((mutation) => {
+    mutation.addedNodes.forEach((node) => scanUnsplashImagesInNode(node));
+  });
 });
 observer.observe(document.body, { childList: true, subtree: true });
 
 attachUploadListener();
 primeUnsplashImages();
-
