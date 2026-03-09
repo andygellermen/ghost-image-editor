@@ -160,19 +160,33 @@ function attachUploadListener() {
   });
 }
 
+
+function resolveEditorHook() {
+  return globalThis.openEditorFromContext || window.openEditorFromContext;
+}
+
+function tryOpenContextEditorWithRetry(imageSrc, attempts = 12, delayMs = 50) {
+  if (!imageSrc) return;
+  const hook = resolveEditorHook();
+  if (typeof hook === "function") {
+    hook(imageSrc);
+    return;
+  }
+
+  if (attempts <= 0) {
+    console.warn(`${EXTENSION_LOG_PREFIX} openEditorFromContext hook is missing; skipped opening fallback tab`);
+    return;
+  }
+
+  setTimeout(() => tryOpenContextEditorWithRetry(imageSrc, attempts - 1, delayMs), delayMs);
+}
+
 try {
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type !== "OPEN_EDITOR_FROM_CONTEXT") return;
-    const openEditorFromContext = globalThis.openEditorFromContext || window.openEditorFromContext;
     const contextSrc = globalThis.__ghostImageEditorContextSrc || globalThis.__ghostImageEditorContextImage?.currentSrc || globalThis.__ghostImageEditorContextImage?.src || "";
     const imageSrc = message.imageSrc || contextSrc;
-    if (typeof openEditorFromContext === "function" && imageSrc) {
-      openEditorFromContext(imageSrc);
-      return;
-    }
-
-    console.warn(`${EXTENSION_LOG_PREFIX} openEditorFromContext hook is missing; opening image URL directly`);
-    if (imageSrc) window.open(imageSrc, "_blank", "noopener,noreferrer");
+    tryOpenContextEditorWithRetry(imageSrc);
   });
 } catch (error) {
   console.warn(`${EXTENSION_LOG_PREFIX} runtime listener unavailable`, error);
