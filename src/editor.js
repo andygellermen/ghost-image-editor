@@ -2,6 +2,8 @@ import Cropper from "cropperjs";
 import "cropperjs/dist/cropper.css";
 import "./editor.css";
 
+{
+
 const MODAL_ID = "ghost-image-editor-modal";
 const DEFAULT_OUTPUT_MIME = "image/png";
 const OUTPUT_FORMATS = {
@@ -783,3 +785,4 @@ globalThis.openEditorFromContext = async function openEditorFromContext(imageSrc
     console.warn("[ghost-image-editor] failed to open context editor", error);
   }
 };
+}
