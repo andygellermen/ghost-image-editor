@@ -1,7 +1,7 @@
 Installation (Development Mode)
 
-1. Start Chrome-Browser
-2. Enter `chrome://extensions` in Searchbar
+1. Start Chrome, Firefox, Safari oder Opera
+2. Open the browser extension developer page (Chrome/Opera: `chrome://extensions`, Firefox: `about:debugging#/runtime/this-firefox`, Safari: Develop > Extensions)
 3. Enter Developer Mode
 4. Run `npm run build` (this automatically creates `dist/manifest.json` and validates all manifest file references)
 5. Choose "Load unpacked"
@@ -28,7 +28,8 @@ Editor hardening notes
 - Programmatic file-input updates dispatched by the extension are intentionally ignored by the upload interception listener (`event.isTrusted`) to avoid feedback loops and accidental retargeting.
 - Context-menu edits prefer upload inputs inside the remembered source card; if no safe target is found, the editor falls back to a download instead of writing to unrelated Ghost fields (e.g. feature image).
 
-Version 0.3.x highlights
+Version 0.4.0 highlights
+- Browser-API usage now works with both `browser` and `chrome` namespaces for improved compatibility across Firefox, Safari and Opera.
 - The editor now displays live current crop dimensions while adjusting the crop frame, and context targeting also supports feature-image containers in Ghost admin.
 - Caption suffix for edited Unsplash images is now localized through extension locale files.
 - Context-menu editing now also supports external image URLs (for example Unsplash) by fetching the image through the extension background worker before opening the crop modal.

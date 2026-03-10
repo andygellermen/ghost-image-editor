@@ -4,6 +4,8 @@ import "./editor.css";
 
 {
 
+const EXTENSION_API = globalThis.browser ?? globalThis.chrome;
+
 const MODAL_ID = "ghost-image-editor-modal";
 const DEFAULT_OUTPUT_MIME = "image/png";
 const OUTPUT_FORMATS = {
@@ -582,9 +584,9 @@ function getImageDimensionsFromElement(imageSrc, imageElement = null) {
 
 function fetchImageFromBackground(imageSrc) {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({ type: "FETCH_IMAGE_BLOB", imageSrc }, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
+    EXTENSION_API.runtime.sendMessage({ type: "FETCH_IMAGE_BLOB", imageSrc }, (response) => {
+      if (EXTENSION_API.runtime.lastError) {
+        reject(new Error(EXTENSION_API.runtime.lastError.message));
         return;
       }
 
