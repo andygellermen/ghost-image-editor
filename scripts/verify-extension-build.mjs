@@ -13,7 +13,8 @@ const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 const requiredFiles = [
   manifest.background?.service_worker,
   ...(manifest.content_scripts?.flatMap((entry) => entry.js ?? []) ?? []),
-  ...(manifest.content_scripts?.flatMap((entry) => entry.css ?? []) ?? [])
+  ...(manifest.content_scripts?.flatMap((entry) => entry.css ?? []) ?? []),
+  ...Object.values(manifest.icons ?? {})
 ].filter(Boolean);
 
 for (const relativeFile of requiredFiles) {
