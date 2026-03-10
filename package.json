@@ -1,6 +1,6 @@
 {
   "name": "ghost-image-editor",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "scripts": {
     "build": "npm run build:chrome && npm run build:firefox && npm run build:opera && npm run build:safari",
