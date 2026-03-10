@@ -1,9 +1,12 @@
 {
   "name": "ghost-image-editor",
-  "version": "0.1.0",
+  "version": "0.4.1",
   "private": true,
   "scripts": {
-    "copy:manifest": "node scripts/copy-manifest.mjs",
-    "build": "npm run copy:manifest"
+    "build": "npm run build:chrome && npm run build:firefox && npm run build:opera && npm run build:safari",
+    "build:chrome": "node scripts/copy-manifest.mjs chrome",
+    "build:firefox": "node scripts/copy-manifest.mjs firefox",
+    "build:opera": "node scripts/copy-manifest.mjs opera",
+    "build:safari": "node scripts/copy-manifest.mjs safari"
   }
 }
