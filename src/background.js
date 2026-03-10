@@ -1,41 +1,42 @@
-const manifestVersion = chrome.runtime.getManifest().version;
+const extensionApi = globalThis.browser ?? globalThis.chrome;
+const manifestVersion = extensionApi?.runtime?.getManifest?.().version ?? "unknown";
 
 console.info(`[ghost-image-editor] background loaded v${manifestVersion}`);
 
 function ensureContextMenu() {
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
+  extensionApi.contextMenus.removeAll(() => {
+    extensionApi.contextMenus.create({
       id: "editImage",
-      title: chrome.i18n.getMessage("contextEdit"),
+      title: extensionApi.i18n.getMessage("contextEdit"),
       contexts: ["image", "all"]
     }, () => {
-      if (chrome.runtime.lastError) {
-        console.warn("[ghost-image-editor] failed to create context menu", chrome.runtime.lastError.message);
+      if (extensionApi.runtime.lastError) {
+        console.warn("[ghost-image-editor] failed to create context menu", extensionApi.runtime.lastError.message);
       }
     });
   });
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+extensionApi.runtime.onInstalled.addListener(() => {
   ensureContextMenu();
 });
 
-chrome.runtime.onStartup.addListener(() => {
+extensionApi.runtime.onStartup.addListener(() => {
   ensureContextMenu();
 });
 
 ensureContextMenu();
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+extensionApi.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== "editImage" || !tab?.id) return;
 
-  chrome.tabs.sendMessage(tab.id, {
+  extensionApi.tabs.sendMessage(tab.id, {
     type: "OPEN_EDITOR_FROM_CONTEXT",
     imageSrc: info.srcUrl || ""
   });
 });
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+extensionApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== "FETCH_IMAGE_BLOB" || !message.imageSrc) {
     return undefined;
   }

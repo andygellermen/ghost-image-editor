@@ -70,7 +70,7 @@ function scanUnsplashImagesInNode(node) {
 
 let manifestVersion = "unknown";
 try {
-  manifestVersion = chrome.runtime.getManifest().version;
+  manifestVersion = (globalThis.browser ?? globalThis.chrome)?.runtime?.getManifest?.().version ?? "unknown";
 } catch (error) {
   console.warn(`${EXTENSION_LOG_PREFIX} runtime unavailable while reading manifest version`, error);
 }
@@ -183,7 +183,7 @@ function tryOpenContextEditorWithRetry(imageSrc, attempts = 12, delayMs = 50) {
 }
 
 try {
-  chrome.runtime.onMessage.addListener((message) => {
+  (globalThis.browser ?? globalThis.chrome).runtime.onMessage.addListener((message) => {
     if (message?.type !== "OPEN_EDITOR_FROM_CONTEXT") return;
     const contextSrc = globalThis.__ghostImageEditorContextSrc || globalThis.__ghostImageEditorContextImage?.currentSrc || globalThis.__ghostImageEditorContextImage?.src || "";
     const imageSrc = message.imageSrc || contextSrc;
