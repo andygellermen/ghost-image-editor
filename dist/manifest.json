@@ -30,8 +30,8 @@
     }
   ],
   "icons": {
-    "16": "ghost-img-editor-16px.png",
-    "48": "ghost-img-editor-48px.png",
-    "128": "ghost-img-editor-128px.png" 
+    "16": "icons/ghost-img-editor-16px.png",
+    "48": "icons/ghost-img-editor-48px.png",
+    "128": "icons/ghost-img-editor-128px.png"
   }
 }
