@@ -3,13 +3,14 @@ Installation (Development Mode)
 1. Start Chrome, Firefox, Safari oder Opera
 2. Open the browser extension developer page (Chrome/Opera: `chrome://extensions`, Firefox: `about:debugging#/runtime/this-firefox`, Safari: Develop > Extensions)
 3. Enter Developer Mode
-4. Run `npm run build` (this automatically creates `dist/manifest.json` and validates all manifest file references)
+4. Run `npm run build` (this automatically creates `dist/manifest.json`, validates all manifest file references, and will download a local modern Node.js runtime on first run if the system `node` is too old for Vite)
 5. Choose "Load unpacked"
 6. Open local `ghost-image-editor/dist` folder
 
 Notes
 - Do not edit files in `dist/` manually. `dist/` is generated completely by the build process.
 - If you change `src/manifest.json`, the file is copied automatically to `dist/manifest.json` on the next build.
+- If your globally installed `node` is older than the Vite requirement, the build scripts automatically use a repo-local runtime from `.local-runtime/node/`.
 
 
 Build/Reload workflow (important)
@@ -19,6 +20,7 @@ Build/Reload workflow (important)
 
 
 Troubleshooting
+- If `npm run build` fails immediately with a Vite syntax error on `import { performance } from 'node:perf_hooks'`, your global Node.js is too old. Run `npm run build` again with internet access enabled so the local runtime can be downloaded automatically.
 - If DevTools still shows `openEditor is not defined` from `content.js:1`, Chrome is still running an older `dist/` build. Run `npm run build` and reload the extension.
 - `window.openEditorFromContext is not a function` in the **page console** can happen because extension content scripts run in an isolated world. Use the context menu flow to test instead of calling extension hooks directly from the page context.
 - Confirm the loaded version by checking for `[ghost-image-editor] content script loaded v...` and `[ghost-image-editor] background loaded v...` in DevTools.

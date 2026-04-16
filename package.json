@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build && node scripts/verify-extension-build.mjs"
+    "dev": "sh scripts/dev.sh",
+    "build": "sh scripts/build.sh"
   },
   "dependencies": {
     "cropperjs": "1.6.2"

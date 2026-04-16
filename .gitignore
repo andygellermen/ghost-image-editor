@@ -11,6 +11,7 @@ yarn-error.log*
 # =========================
 dist-temp/
 .vite/
+.local-runtime/
 
 # Falls du dist NICHT committen willst:
 # dist/
