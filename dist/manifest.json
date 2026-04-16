@@ -2,7 +2,7 @@
   "name": "__MSG_extensionName__",
   "description": "__MSG_extensionDescription__",
   "default_locale": "en",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "manifest_version": 3,
   "permissions": [
     "contextMenus",
@@ -32,6 +32,13 @@
   "icons": {
     "16": "icons/ghost-img-editor-16px.png",
     "48": "icons/ghost-img-editor-48px.png",
+    "96": "icons/ghost-img-editor-96px.png",
     "128": "icons/ghost-img-editor-128px.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ghost-image-editor@ghost.local",
+      "strict_min_version": "109.0"
+    }
   }
 }

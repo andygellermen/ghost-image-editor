@@ -18,10 +18,10 @@
     "message": "Mit Ghost Bildeditor bearbeiten"
   },
   "applyToGhost": {
-    "message": "Auf Ghost anwenden"
+    "message": "In Ghost speichern"
   },
   "applyCrop": {
-    "message": "Zuschnitt anwenden"
+    "message": "In Ghost speichern"
   },
   "imageEditor": {
     "message": "Bildeditor"
@@ -35,11 +35,35 @@
   "height": {
     "message": "Höhe"
   },
+  "dimensions": {
+    "message": "Größe"
+  },
   "auto": {
     "message": "Auto"
   },
   "outputFile": {
     "message": "Ausgabedatei"
+  },
+  "cropRatio": {
+    "message": "Seitenverhältnis"
+  },
+  "orientation": {
+    "message": "Ausrichtung"
+  },
+  "landscape": {
+    "message": "Querformat"
+  },
+  "portrait": {
+    "message": "Hochformat"
+  },
+  "free": {
+    "message": "Frei"
+  },
+  "original": {
+    "message": "Original"
+  },
+  "new": {
+    "message": "Neu"
   },
   "originalDimensions": {
     "message": "Originale Abmessungen"

@@ -7,13 +7,28 @@ import "./editor.css";
 const EXTENSION_API = globalThis.browser ?? globalThis.chrome;
 
 const MODAL_ID = "ghost-image-editor-modal";
-const DEFAULT_OUTPUT_MIME = "image/png";
+const DEFAULT_OUTPUT_MIME = "image/webp";
+const DEFAULT_OUTPUT_FORMAT = "webp";
+const DEFAULT_RATIO_PRESET_ID = "16:9";
+const DEFAULT_ORIENTATION = "landscape";
 const OUTPUT_FORMATS = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   webp: "image/webp"
 };
+const OUTPUT_FORMAT_OPTIONS = [
+  { value: "jpg", label: "JPG" },
+  { value: "png", label: "PNG" },
+  { value: "webp", label: "WEBP" }
+];
+const ASPECT_RATIO_PRESETS = [
+  { id: "16:9", label: "16:9", width: 16, height: 9 },
+  { id: "4:3", label: "4:3", width: 4, height: 3 },
+  { id: "3:2", label: "3:2", width: 3, height: 2 },
+  { id: "1:1", label: "1:1", width: 1, height: 1 },
+  { id: "free", labelKey: "free", fallback: "Free" }
+];
 
 const FEATURE_IMAGE_SELECTORS = "[data-test-feature-image-uploader], .gh-editor-feature-image, .gh-editor-settings, .settings-menu, .settings-menu-pane, .settings-menu-container, .gh-editor-settings-container, aside";
 const CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card, .gh-editor-feature-image-container, .gh-editor-feature-image";
@@ -70,15 +85,23 @@ function describeInput(input) {
 
 const I18N_MESSAGES = {
   en: {
-    applyToGhost: "Apply to Ghost",
-    applyCrop: "Apply crop",
+    applyToGhost: "Save to Ghost",
+    applyCrop: "Save to Ghost",
     imageEditor: "Image editor",
     selectedImage: "Selected image",
     width: "Width",
     height: "Height",
+    dimensions: "Size",
     auto: "Auto",
     format: "Format",
+    cropRatio: "Aspect ratio",
+    orientation: "Orientation",
+    landscape: "Landscape",
+    portrait: "Portrait",
+    free: "Free",
     cancel: "Cancel",
+    original: "Original",
+    new: "New",
     outputFile: "Output file",
     originalDimensions: "Original dimensions",
     originalSize: "Original file size",
@@ -88,15 +111,23 @@ const I18N_MESSAGES = {
     by: "Photo by"
   },
   de: {
-    applyToGhost: "Auf Ghost anwenden",
-    applyCrop: "Zuschnitt anwenden",
+    applyToGhost: "In Ghost speichern",
+    applyCrop: "In Ghost speichern",
     imageEditor: "Bildeditor",
     selectedImage: "Ausgewähltes Bild",
     width: "Breite",
     height: "Höhe",
+    dimensions: "Größe",
     auto: "Auto",
     format: "Format",
+    cropRatio: "Seitenverhältnis",
+    orientation: "Ausrichtung",
+    landscape: "Querformat",
+    portrait: "Hochformat",
+    free: "Frei",
     cancel: "Abbrechen",
+    original: "Original",
+    new: "Neu",
     outputFile: "Ausgabedatei",
     originalDimensions: "Originale Abmessungen",
     originalSize: "Originale Dateigröße",
@@ -130,16 +161,81 @@ function removeModal() {
 
 function inferExtensionFromMimeType(mimeType) {
   if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/png") return "png";
   if (mimeType === "image/webp") return "webp";
-  return "png";
+  return DEFAULT_OUTPUT_FORMAT;
 }
 
 function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0B";
   const units = ["B", "KB", "MB", "GB"];
   const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const value = bytes / (1024 ** index);
-  return `${value.toFixed(index === 0 ? 0 : 2)} ${units[index]}`;
+  const decimals = index === 0 || value >= 10 ? 0 : 1;
+  return `${value.toFixed(decimals).replace(/\.0$/, "")}${units[index]}`;
+}
+
+function formatDimensions(width, height) {
+  return `${Math.max(1, Math.round(width))}x${Math.max(1, Math.round(height))}`;
+}
+
+function getFormatLabel(valueOrMimeType) {
+  const format = inferExtensionFromMimeType(valueOrMimeType);
+  return format === "jpg" ? "JPG" : format.toUpperCase();
+}
+
+function buildSummaryText(originalDetails, newDetails) {
+  return `${t("original", "Original")}: ${formatDimensions(originalDetails.width, originalDetails.height)}, ${originalDetails.format}, ${originalDetails.size} - ${t("new", "New")}: ${formatDimensions(newDetails.width, newDetails.height)}, ${newDetails.format}, ${newDetails.size}`;
+}
+
+function getAspectRatioPreset(presetId) {
+  return ASPECT_RATIO_PRESETS.find((preset) => preset.id === presetId) || ASPECT_RATIO_PRESETS[0];
+}
+
+function resolveAspectRatio(presetId, orientation) {
+  const preset = getAspectRatioPreset(presetId);
+  if (!Number.isFinite(preset?.width) || !Number.isFinite(preset?.height)) return Number.NaN;
+
+  const ratio = preset.width / preset.height;
+  if (orientation === "portrait" && preset.width !== preset.height) {
+    return 1 / ratio;
+  }
+
+  return ratio;
+}
+
+function setActiveButtons(buttons, key, activeValue) {
+  buttons.forEach((button) => {
+    const isActive = button.dataset[key] === activeValue;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+function getSelectedFormatValue(formatInputs) {
+  return formatInputs.find((input) => input.checked)?.value || DEFAULT_OUTPUT_FORMAT;
+}
+
+function fitCropBoxToAspectRatio(cropper, aspectRatio) {
+  if (!Number.isFinite(aspectRatio) || aspectRatio <= 0) return;
+
+  const imageData = cropper.getImageData();
+  if (!imageData.width || !imageData.height) return;
+
+  let cropWidth = imageData.width;
+  let cropHeight = cropWidth / aspectRatio;
+
+  if (cropHeight > imageData.height) {
+    cropHeight = imageData.height;
+    cropWidth = cropHeight * aspectRatio;
+  }
+
+  cropper.setCropBoxData({
+    left: imageData.left + ((imageData.width - cropWidth) / 2),
+    top: imageData.top + ((imageData.height - cropHeight) / 2),
+    width: cropWidth,
+    height: cropHeight
+  });
 }
 
 function createModal(imageSrc, options = {}) {
@@ -150,52 +246,103 @@ function createModal(imageSrc, options = {}) {
     fileName = "image",
     originalWidth = 0,
     originalHeight = 0,
-    originalSize = 0
+    originalSize = 0,
+    originalFormat = DEFAULT_OUTPUT_FORMAT
   } = options;
-  const applyLabel = mode === "context" ? t("applyToGhost", "Apply to Ghost") : t("applyCrop", "Apply crop");
+  const applyLabel = mode === "context" ? t("applyToGhost", "Save to Ghost") : t("applyCrop", "Save to Ghost");
+  const initialSummary = buildSummaryText(
+    {
+      width: originalWidth,
+      height: originalHeight,
+      format: getFormatLabel(originalFormat),
+      size: formatBytes(originalSize)
+    },
+    {
+      width: originalWidth,
+      height: originalHeight,
+      format: getFormatLabel(DEFAULT_OUTPUT_FORMAT),
+      size: "–"
+    }
+  );
 
   const modal = document.createElement("div");
   modal.id = MODAL_ID;
   modal.className = "ghost-image-editor-modal";
   modal.innerHTML = `
     <div class="editor-box" role="dialog" aria-modal="true" aria-label="${t("imageEditor", "Image editor")}">
-      <div class="editor-image-wrapper">
-        <img class="editor-image" alt="${t("selectedImage", "Selected image")}" src="${imageSrc}">
+      <div class="editor-header">
+        <div class="editor-header-copy">
+          <h2 class="editor-title">${t("imageEditor", "Image editor")}</h2>
+        </div>
+        <span class="editor-file-pill" title="${fileName}">${fileName}</span>
       </div>
-      <div class="editor-settings">
-        <label>
-          ${t("width", "Width")}
-          <input type="number" min="1" step="1" data-setting="width" placeholder="${t("auto", "Auto")}">
-        </label>
-        <label>
-          ${t("height", "Height")}
-          <input type="number" min="1" step="1" data-setting="height" placeholder="${t("auto", "Auto")}">
-        </label>
-        <label>
-          ${t("format", "Format")}
-          <select data-setting="format">
-            <option value="png">PNG</option>
-            <option value="jpg">JPG</option>
-            <option value="webp">WEBP</option>
-          </select>
-        </label>
+      <div class="editor-toolbar">
+        <div class="editor-control-group">
+          <span class="editor-control-label">${t("cropRatio", "Aspect ratio")}</span>
+          <div class="editor-chip-row">
+            ${ASPECT_RATIO_PRESETS.map((preset) => {
+              const label = preset.label || t(preset.labelKey, preset.fallback);
+              const isActive = preset.id === DEFAULT_RATIO_PRESET_ID;
+              return `<button type="button" class="editor-chip-button${isActive ? " is-active" : ""}" data-ratio-preset="${preset.id}" aria-pressed="${String(isActive)}">${label}</button>`;
+            }).join("")}
+          </div>
+        </div>
+        <div class="editor-control-group">
+          <span class="editor-control-label">${t("orientation", "Orientation")}</span>
+          <div class="editor-chip-row">
+            <button type="button" class="editor-chip-button is-active" data-orientation="landscape" aria-pressed="true">${t("landscape", "Landscape")}</button>
+            <button type="button" class="editor-chip-button" data-orientation="portrait" aria-pressed="false">${t("portrait", "Portrait")}</button>
+          </div>
+        </div>
+        <div class="editor-control-group editor-control-group--size">
+          <span class="editor-control-label">${t("dimensions", "Size")}</span>
+          <div class="editor-dimensions">
+            <label class="editor-dimension-field">
+              <span>${t("width", "Width")}</span>
+              <input type="number" min="1" step="1" inputmode="numeric" data-setting="width" placeholder="${t("auto", "Auto")}">
+            </label>
+            <label class="editor-dimension-field">
+              <span>${t("height", "Height")}</span>
+              <input type="number" min="1" step="1" inputmode="numeric" data-setting="height" placeholder="${t("auto", "Auto")}">
+            </label>
+          </div>
+        </div>
+        <fieldset class="editor-control-group editor-control-group--format">
+          <legend class="editor-control-label">${t("format", "Format")}</legend>
+          <div class="editor-chip-radio-row">
+            ${OUTPUT_FORMAT_OPTIONS.map((formatOption) => `
+              <label class="editor-chip-radio">
+                <input
+                  type="radio"
+                  name="ghost-image-editor-format"
+                  value="${formatOption.value}"
+                  data-setting="format"
+                  ${formatOption.value === DEFAULT_OUTPUT_FORMAT ? "checked" : ""}
+                >
+                <span>${formatOption.label}</span>
+              </label>
+            `).join("")}
+          </div>
+        </fieldset>
       </div>
-      <div class="editor-controls">
-        <button type="button" data-action="cancel">${t("cancel", "Cancel")}</button>
-        <button type="button" data-action="apply">${applyLabel}</button>
+      <div class="editor-stage">
+        <div class="editor-image-shell">
+          <div class="editor-image-wrapper">
+            <img class="editor-image" alt="${t("selectedImage", "Selected image")}" src="${imageSrc}">
+          </div>
+        </div>
       </div>
-      <div class="editor-hints">
-        <p class="editor-hint">${t("outputFile", "Output file")}: <strong>${fileName}</strong></p>
-        <p class="editor-hint">${t("originalDimensions", "Original dimensions")}: <strong>${originalWidth}×${originalHeight}</strong></p>
-        <p class="editor-hint">${t("currentCropDimensions", "Current crop dimensions")}: <strong data-value-crop-dimensions>${originalWidth}×${originalHeight}</strong></p>
-        <p class="editor-hint">${t("originalSize", "Original file size")}: <strong>${formatBytes(originalSize)}</strong></p>
-        <p class="editor-hint" data-hint-new-size hidden>${t("newSize", "New file size")}: <strong data-value>–</strong></p>
+      <div class="editor-footer">
+        <p class="editor-summary" data-value-summary>${initialSummary}</p>
+        <div class="editor-controls">
+          <button type="button" data-action="cancel">${t("cancel", "Cancel")}</button>
+          <button type="button" data-action="apply">${applyLabel}</button>
+        </div>
       </div>
     </div>
   `;
 
   document.body.appendChild(modal);
-  removeDuplicateEditorSections(modal);
 
   return {
     modal,
@@ -204,23 +351,11 @@ function createModal(imageSrc, options = {}) {
     applyButton: modal.querySelector('[data-action="apply"]'),
     widthInput: modal.querySelector('[data-setting="width"]'),
     heightInput: modal.querySelector('[data-setting="height"]'),
-    formatSelect: modal.querySelector('[data-setting="format"]'),
-    newSizeHint: modal.querySelector('[data-hint-new-size]'),
-    newSizeValue: modal.querySelector('[data-hint-new-size] [data-value]'),
-    cropDimensionsValue: modal.querySelector('[data-value-crop-dimensions]')
+    formatInputs: Array.from(modal.querySelectorAll('[data-setting="format"]')),
+    ratioButtons: Array.from(modal.querySelectorAll('[data-ratio-preset]')),
+    orientationButtons: Array.from(modal.querySelectorAll('[data-orientation]')),
+    summaryValue: modal.querySelector('[data-value-summary]')
   };
-}
-
-function removeDuplicateEditorSections(modal) {
-  const settings = modal.querySelectorAll(".editor-settings");
-  settings.forEach((section, index) => {
-    if (index > 0) section.remove();
-  });
-
-  const hints = modal.querySelectorAll(".editor-hints");
-  hints.forEach((hint, index) => {
-    if (index > 0) hint.remove();
-  });
 }
 
 function updateInputWithFile(input, file) {
@@ -610,49 +745,67 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     applyButton,
     widthInput,
     heightInput,
-    formatSelect,
-    newSizeHint,
-    newSizeValue,
-    cropDimensionsValue
+    formatInputs,
+    ratioButtons,
+    orientationButtons,
+    summaryValue
   } = createModal(imageSrc, {
     mode,
     fileName: originalFile.name,
     originalWidth: originalDimensions.width,
     originalHeight: originalDimensions.height,
-    originalSize: originalFile.size
+    originalSize: originalFile.size,
+    originalFormat: originalFile.type || DEFAULT_OUTPUT_MIME
   });
-
-  formatSelect.value = inferExtensionFromMimeType(originalFile.type || DEFAULT_OUTPUT_MIME);
+  const originalSummary = {
+    width: originalDimensions.width,
+    height: originalDimensions.height,
+    format: getFormatLabel(originalFile.type || DEFAULT_OUTPUT_MIME),
+    size: formatBytes(originalFile.size)
+  };
+  let selectedRatioPreset = DEFAULT_RATIO_PRESET_ID;
+  let selectedOrientation = DEFAULT_ORIENTATION;
+  let previewVersion = 0;
 
   const cropper = new Cropper(image, {
     viewMode: 1,
     autoCropArea: 1,
-    responsive: true
+    responsive: true,
+    ready() {
+      applyAspectRatioSelection({ shouldRefit: true });
+      refreshSizePreview();
+    }
   });
 
+  function applyAspectRatioSelection({ shouldRefit = false } = {}) {
+    const aspectRatio = resolveAspectRatio(selectedRatioPreset, selectedOrientation);
+    cropper.setAspectRatio(aspectRatio);
+    if (shouldRefit && Number.isFinite(aspectRatio)) {
+      fitCropBoxToAspectRatio(cropper, aspectRatio);
+    }
+
+    setActiveButtons(ratioButtons, "ratioPreset", selectedRatioPreset);
+    setActiveButtons(orientationButtons, "orientation", selectedOrientation);
+  }
+
   async function refreshSizePreview() {
+    const requestVersion = ++previewVersion;
     const cropCanvas = cropper.getCroppedCanvas();
     if (!cropCanvas) return;
     const dimensions = resolveOutputDimensions(cropCanvas.width, cropCanvas.height, widthInput.value, heightInput.value);
-    const selectedFormat = formatSelect.value;
+    const selectedFormat = getSelectedFormatValue(formatInputs);
     const mimeType = OUTPUT_FORMATS[selectedFormat] || DEFAULT_OUTPUT_MIME;
     const outputFile = await buildOutputFile(cropCanvas, originalFile.name, mimeType, dimensions.width, dimensions.height);
-
-    const cropData = cropper.getData(true);
-    if (cropDimensionsValue) {
-      cropDimensionsValue.textContent = `${Math.max(1, Math.round(cropData.width))}×${Math.max(1, Math.round(cropData.height))}`;
-    }
-    const isCropped = Math.round(cropData.width) !== originalDimensions.width || Math.round(cropData.height) !== originalDimensions.height;
-    const isResized = dimensions.width !== cropCanvas.width || dimensions.height !== cropCanvas.height;
-
-    if (outputFile && (isCropped || isResized)) {
-      newSizeHint.hidden = false;
-      newSizeValue.textContent = formatBytes(outputFile.size);
+    if (requestVersion !== previewVersion || !summaryValue) {
       return;
     }
 
-    newSizeHint.hidden = true;
-    newSizeValue.textContent = "–";
+    summaryValue.textContent = buildSummaryText(originalSummary, {
+      width: dimensions.width,
+      height: dimensions.height,
+      format: getFormatLabel(mimeType),
+      size: formatBytes(outputFile?.size || 0)
+    });
   }
 
   function cleanup() {
@@ -665,7 +818,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     const dimensions = resolveOutputDimensions(cropCanvas.width, cropCanvas.height, widthInput.value, heightInput.value);
     const outputWidth = dimensions.width;
     const outputHeight = dimensions.height;
-    const selectedFormat = formatSelect.value;
+    const selectedFormat = getSelectedFormatValue(formatInputs);
     const mimeType = OUTPUT_FORMATS[selectedFormat] || DEFAULT_OUTPUT_MIME;
 
     const outputFile = await buildOutputFile(cropCanvas, originalFile.name, mimeType, outputWidth, outputHeight);
@@ -720,8 +873,24 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
   heightInput.addEventListener("input", () => {
     refreshSizePreview();
   });
-  formatSelect.addEventListener("change", () => {
-    refreshSizePreview();
+  formatInputs.forEach((formatInput) => {
+    formatInput.addEventListener("change", () => {
+      refreshSizePreview();
+    });
+  });
+  ratioButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedRatioPreset = button.dataset.ratioPreset || DEFAULT_RATIO_PRESET_ID;
+      applyAspectRatioSelection({ shouldRefit: true });
+      refreshSizePreview();
+    });
+  });
+  orientationButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedOrientation = button.dataset.orientation || DEFAULT_ORIENTATION;
+      applyAspectRatioSelection({ shouldRefit: true });
+      refreshSizePreview();
+    });
   });
   image.addEventListener("crop", () => {
     refreshSizePreview();

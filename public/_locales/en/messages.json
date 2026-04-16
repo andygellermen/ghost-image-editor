@@ -18,10 +18,10 @@
     "message": "Edit with Ghost Image Editor"
   },
   "applyToGhost": {
-    "message": "Apply to Ghost"
+    "message": "Save to Ghost"
   },
   "applyCrop": {
-    "message": "Apply crop"
+    "message": "Save to Ghost"
   },
   "imageEditor": {
     "message": "Image editor"
@@ -35,11 +35,35 @@
   "height": {
     "message": "Height"
   },
+  "dimensions": {
+    "message": "Size"
+  },
   "auto": {
     "message": "Auto"
   },
   "outputFile": {
     "message": "Output file"
+  },
+  "cropRatio": {
+    "message": "Aspect ratio"
+  },
+  "orientation": {
+    "message": "Orientation"
+  },
+  "landscape": {
+    "message": "Landscape"
+  },
+  "portrait": {
+    "message": "Portrait"
+  },
+  "free": {
+    "message": "Free"
+  },
+  "original": {
+    "message": "Original"
+  },
+  "new": {
+    "message": "New"
   },
   "originalDimensions": {
     "message": "Original dimensions"
