@@ -205,14 +205,43 @@ function buildOutputFilename(originalName, mimeTypeOrFormat = DEFAULT_OUTPUT_MIM
   return `${basename}.${extension}`;
 }
 
-function buildSummaryText(originalDetails, newDetails, outputFileName = "") {
-  const newSummaryParts = [formatDimensions(newDetails.width, newDetails.height)];
-  if (outputFileName) {
-    newSummaryParts.push(outputFileName);
-  }
-  newSummaryParts.push(newDetails.format, newDetails.size);
+function createSummaryPill(label, rows = [], accent = false) {
+  const pill = document.createElement("div");
+  pill.className = `editor-summary-pill${accent ? " editor-summary-pill--accent" : ""}`;
 
-  return `${t("original", "Original")}: ${formatDimensions(originalDetails.width, originalDetails.height)}, ${originalDetails.format}, ${originalDetails.size} - ${t("new", "New")}: ${newSummaryParts.join(", ")}`;
+  const labelElement = document.createElement("span");
+  labelElement.className = "editor-summary-label";
+  labelElement.textContent = label;
+  pill.appendChild(labelElement);
+
+  const body = document.createElement("div");
+  body.className = "editor-summary-body";
+  rows.filter(Boolean).forEach((row) => {
+    const line = document.createElement("span");
+    line.className = `editor-summary-line editor-summary-line--${row.kind || "meta"}`;
+    line.textContent = row.text;
+    body.appendChild(line);
+  });
+  pill.appendChild(body);
+
+  return pill;
+}
+
+function renderSummary(container, originalDetails, newDetails, outputFileName = "") {
+  if (!(container instanceof HTMLElement)) return;
+
+  container.textContent = "";
+  container.append(
+    createSummaryPill(t("original", "Original"), [
+      { kind: "primary", text: formatDimensions(originalDetails.width, originalDetails.height) },
+      { kind: "meta", text: `${originalDetails.format}, ${originalDetails.size}` }
+    ]),
+    createSummaryPill(t("new", "New"), [
+      { kind: "primary", text: formatDimensions(newDetails.width, newDetails.height) },
+      outputFileName ? { kind: "filename", text: outputFileName } : null,
+      { kind: "meta", text: `${newDetails.format}, ${newDetails.size}` }
+    ], true)
+  );
 }
 
 function getAspectRatioPreset(presetId) {
@@ -278,7 +307,92 @@ function createModal(imageSrc, options = {}) {
     originalFormat = DEFAULT_OUTPUT_FORMAT
   } = options;
   const applyLabel = mode === "context" ? t("applyToGhost", "Save to Ghost") : t("applyCrop", "Save to Ghost");
-  const initialSummary = buildSummaryText(
+
+  const modal = document.createElement("div");
+  modal.id = MODAL_ID;
+  modal.className = "ghost-image-editor-modal";
+  modal.innerHTML = `
+    <div class="editor-box" role="dialog" aria-modal="true" aria-label="${t("imageEditor", "Image editor")}">
+      <div class="editor-header">
+        <div class="editor-header-copy">
+          <h2 class="editor-title">${t("imageEditor", "Image editor")}</h2>
+        </div>
+      </div>
+      <div class="editor-toolbar">
+        <div class="editor-toolbar-primary">
+          <div class="editor-control-group">
+            <span class="editor-control-label">${t("cropRatio", "Aspect ratio")}</span>
+            <div class="editor-chip-row">
+              ${ASPECT_RATIO_PRESETS.map((preset) => {
+                const label = preset.label || t(preset.labelKey, preset.fallback);
+                const isActive = preset.id === DEFAULT_RATIO_PRESET_ID;
+                return `<button type="button" class="editor-chip-button${isActive ? " is-active" : ""}" data-ratio-preset="${preset.id}" aria-pressed="${String(isActive)}">${label}</button>`;
+              }).join("")}
+            </div>
+          </div>
+          <div class="editor-control-group">
+            <span class="editor-control-label">${t("orientation", "Orientation")}</span>
+            <div class="editor-chip-row">
+              <button type="button" class="editor-chip-button${initialOrientation === "landscape" ? " is-active" : ""}" data-orientation="landscape" aria-pressed="${String(initialOrientation === "landscape")}">${t("landscape", "Landscape")}</button>
+              <button type="button" class="editor-chip-button${initialOrientation === "portrait" ? " is-active" : ""}" data-orientation="portrait" aria-pressed="${String(initialOrientation === "portrait")}">${t("portrait", "Portrait")}</button>
+            </div>
+          </div>
+        </div>
+        <div class="editor-toolbar-divider" aria-hidden="true"></div>
+        <div class="editor-toolbar-secondary">
+          <fieldset class="editor-control-group editor-control-group--format">
+            <legend class="editor-control-label">${t("format", "Format")}</legend>
+            <div class="editor-chip-radio-row">
+              ${OUTPUT_FORMAT_OPTIONS.map((formatOption) => `
+                <label class="editor-chip-radio">
+                  <input
+                    type="radio"
+                    name="ghost-image-editor-format"
+                    value="${formatOption.value}"
+                    data-setting="format"
+                    ${formatOption.value === DEFAULT_OUTPUT_FORMAT ? "checked" : ""}
+                  >
+                  <span>${formatOption.label}</span>
+                </label>
+              `).join("")}
+            </div>
+          </fieldset>
+          <div class="editor-control-group editor-control-group--size">
+            <span class="editor-control-label">${t("dimensions", "Size")}</span>
+            <div class="editor-dimensions">
+              <label class="editor-dimension-field">
+                <span>${t("width", "Width")}</span>
+                <input type="number" min="1" step="1" inputmode="numeric" data-setting="width" placeholder="${t("auto", "Auto")}">
+              </label>
+              <label class="editor-dimension-field">
+                <span>${t("height", "Height")}</span>
+                <input type="number" min="1" step="1" inputmode="numeric" data-setting="height" placeholder="${t("auto", "Auto")}">
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="editor-stage">
+        <div class="editor-image-shell">
+          <div class="editor-image-wrapper">
+            <img class="editor-image" alt="${t("selectedImage", "Selected image")}" src="${imageSrc}">
+          </div>
+        </div>
+      </div>
+      <div class="editor-footer">
+        <div class="editor-summary" data-value-summary></div>
+        <div class="editor-controls">
+          <button type="button" data-action="cancel">${t("cancel", "Cancel")}</button>
+          <button type="button" data-action="apply">${applyLabel}</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  const summaryValue = modal.querySelector('[data-value-summary]');
+  renderSummary(
+    summaryValue,
     {
       width: originalWidth,
       height: originalHeight,
@@ -293,88 +407,6 @@ function createModal(imageSrc, options = {}) {
     },
     buildOutputFilename(fileName, DEFAULT_OUTPUT_FORMAT)
   );
-
-  const modal = document.createElement("div");
-  modal.id = MODAL_ID;
-  modal.className = "ghost-image-editor-modal";
-  modal.innerHTML = `
-    <div class="editor-box" role="dialog" aria-modal="true" aria-label="${t("imageEditor", "Image editor")}">
-      <div class="editor-header">
-        <div class="editor-header-copy">
-          <h2 class="editor-title">${t("imageEditor", "Image editor")}</h2>
-        </div>
-      </div>
-      <div class="editor-toolbar">
-        <div class="editor-control-group">
-          <span class="editor-control-label">${t("cropRatio", "Aspect ratio")}</span>
-          <div class="editor-chip-row">
-            ${ASPECT_RATIO_PRESETS.map((preset) => {
-              const label = preset.label || t(preset.labelKey, preset.fallback);
-              const isActive = preset.id === DEFAULT_RATIO_PRESET_ID;
-              return `<button type="button" class="editor-chip-button${isActive ? " is-active" : ""}" data-ratio-preset="${preset.id}" aria-pressed="${String(isActive)}">${label}</button>`;
-            }).join("")}
-          </div>
-        </div>
-        <div class="editor-control-group">
-          <span class="editor-control-label">${t("orientation", "Orientation")}</span>
-          <div class="editor-chip-row">
-            <button type="button" class="editor-chip-button${initialOrientation === "landscape" ? " is-active" : ""}" data-orientation="landscape" aria-pressed="${String(initialOrientation === "landscape")}">${t("landscape", "Landscape")}</button>
-            <button type="button" class="editor-chip-button${initialOrientation === "portrait" ? " is-active" : ""}" data-orientation="portrait" aria-pressed="${String(initialOrientation === "portrait")}">${t("portrait", "Portrait")}</button>
-          </div>
-        </div>
-        <div class="editor-control-group editor-control-group--size">
-          <span class="editor-control-label">${t("dimensions", "Size")}</span>
-          <div class="editor-dimensions">
-            <label class="editor-dimension-field">
-              <span>${t("width", "Width")}</span>
-              <input type="number" min="1" step="1" inputmode="numeric" data-setting="width" placeholder="${t("auto", "Auto")}">
-            </label>
-            <label class="editor-dimension-field">
-              <span>${t("height", "Height")}</span>
-              <input type="number" min="1" step="1" inputmode="numeric" data-setting="height" placeholder="${t("auto", "Auto")}">
-            </label>
-          </div>
-        </div>
-        <fieldset class="editor-control-group editor-control-group--format">
-          <legend class="editor-control-label">${t("format", "Format")}</legend>
-          <div class="editor-chip-radio-row">
-            ${OUTPUT_FORMAT_OPTIONS.map((formatOption) => `
-              <label class="editor-chip-radio">
-                <input
-                  type="radio"
-                  name="ghost-image-editor-format"
-                  value="${formatOption.value}"
-                  data-setting="format"
-                  ${formatOption.value === DEFAULT_OUTPUT_FORMAT ? "checked" : ""}
-                >
-                <span>${formatOption.label}</span>
-              </label>
-            `).join("")}
-          </div>
-        </fieldset>
-      </div>
-      <div class="editor-stage">
-        <div class="editor-image-shell">
-          <div class="editor-image-wrapper">
-            <img class="editor-image" alt="${t("selectedImage", "Selected image")}" src="${imageSrc}">
-          </div>
-        </div>
-      </div>
-      <div class="editor-footer">
-        <p class="editor-summary" data-value-summary></p>
-        <div class="editor-controls">
-          <button type="button" data-action="cancel">${t("cancel", "Cancel")}</button>
-          <button type="button" data-action="apply">${applyLabel}</button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-  const summaryValue = modal.querySelector('[data-value-summary]');
-  if (summaryValue) {
-    summaryValue.textContent = initialSummary;
-  }
 
   return {
     modal,
@@ -935,7 +967,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
       return;
     }
 
-    summaryValue.textContent = buildSummaryText(originalSummary, {
+    renderSummary(summaryValue, originalSummary, {
       width: dimensions.width,
       height: dimensions.height,
       format: getFormatLabel(mimeType),
