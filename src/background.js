@@ -1,4 +1,19 @@
-const extensionApi = globalThis.browser ?? globalThis.chrome;
+function resolveExtensionApi() {
+  const candidates = [];
+
+  if (typeof browser !== "undefined") candidates.push(browser);
+  if (typeof chrome !== "undefined") candidates.push(chrome);
+  if (globalThis?.browser) candidates.push(globalThis.browser);
+  if (globalThis?.chrome) candidates.push(globalThis.chrome);
+
+  return candidates.find((candidate) => candidate?.runtime?.sendMessage)
+    || candidates.find((candidate) => candidate?.runtime?.onMessage?.addListener)
+    || candidates.find((candidate) => candidate?.runtime?.getManifest)
+    || candidates.find((candidate) => candidate?.contextMenus?.create)
+    || null;
+}
+
+const extensionApi = resolveExtensionApi();
 const manifestVersion = extensionApi?.runtime?.getManifest?.().version ?? "unknown";
 
 console.info(`[ghost-image-editor] background loaded v${manifestVersion}`);

@@ -4,7 +4,22 @@ import "./editor.css";
 
 {
 
-const EXTENSION_API = globalThis.browser ?? globalThis.chrome;
+function resolveExtensionApi() {
+  const candidates = [];
+
+  if (typeof browser !== "undefined") candidates.push(browser);
+  if (typeof chrome !== "undefined") candidates.push(chrome);
+  if (globalThis?.browser) candidates.push(globalThis.browser);
+  if (globalThis?.chrome) candidates.push(globalThis.chrome);
+
+  return candidates.find((candidate) => candidate?.runtime?.sendMessage)
+    || candidates.find((candidate) => candidate?.runtime?.onMessage?.addListener)
+    || candidates.find((candidate) => candidate?.runtime?.getManifest)
+    || candidates.find((candidate) => candidate?.i18n?.getMessage)
+    || null;
+}
+
+const EXTENSION_API = resolveExtensionApi();
 
 const MODAL_ID = "ghost-image-editor-modal";
 const DEFAULT_OUTPUT_MIME = "image/webp";
@@ -145,7 +160,7 @@ function getLocale() {
 
 function t(key, fallback) {
   try {
-    const runtimeValue = chrome?.i18n?.getMessage?.(key);
+    const runtimeValue = EXTENSION_API?.i18n?.getMessage?.(key);
     if (runtimeValue) return runtimeValue;
   } catch (_error) {
     // no-op when runtime i18n is unavailable
@@ -718,21 +733,47 @@ function getImageDimensionsFromElement(imageSrc, imageElement = null) {
 }
 
 function fetchImageFromBackground(imageSrc) {
+  const runtimeApi = EXTENSION_API?.runtime;
+  if (!runtimeApi?.sendMessage) {
+    return Promise.reject(new Error("Extension runtime API unavailable"));
+  }
+
   return new Promise((resolve, reject) => {
-    EXTENSION_API.runtime.sendMessage({ type: "FETCH_IMAGE_BLOB", imageSrc }, (response) => {
-      if (EXTENSION_API.runtime.lastError) {
-        reject(new Error(EXTENSION_API.runtime.lastError.message));
+    let settled = false;
+    const resolveOnce = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const rejectOnce = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    const handleResponse = (response) => {
+      const lastError = runtimeApi.lastError;
+      if (lastError) {
+        rejectOnce(new Error(lastError.message));
         return;
       }
 
       if (!response?.ok || !Array.isArray(response.buffer)) {
-        reject(new Error(response?.error || "Unknown fetch error"));
+        rejectOnce(new Error(response?.error || "Unknown fetch error"));
         return;
       }
 
       const array = new Uint8Array(response.buffer);
-      resolve(new Blob([array], { type: response.type || DEFAULT_OUTPUT_MIME }));
-    });
+      resolveOnce(new Blob([array], { type: response.type || DEFAULT_OUTPUT_MIME }));
+    };
+
+    try {
+      const maybePromise = runtimeApi.sendMessage({ type: "FETCH_IMAGE_BLOB", imageSrc }, handleResponse);
+      if (maybePromise && typeof maybePromise.then === "function") {
+        maybePromise.then(handleResponse).catch(rejectOnce);
+      }
+    } catch (error) {
+      rejectOnce(error);
+    }
   });
 }
 

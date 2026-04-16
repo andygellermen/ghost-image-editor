@@ -1,4 +1,19 @@
 {
+function resolveExtensionApi() {
+  const candidates = [];
+
+  if (typeof browser !== "undefined") candidates.push(browser);
+  if (typeof chrome !== "undefined") candidates.push(chrome);
+  if (globalThis?.browser) candidates.push(globalThis.browser);
+  if (globalThis?.chrome) candidates.push(globalThis.chrome);
+
+  return candidates.find((candidate) => candidate?.runtime?.sendMessage)
+    || candidates.find((candidate) => candidate?.runtime?.onMessage?.addListener)
+    || candidates.find((candidate) => candidate?.runtime?.getManifest)
+    || null;
+}
+
+const EXTENSION_API = resolveExtensionApi();
 const EXTENSION_LOG_PREFIX = "[ghost-image-editor]";
 const CONTEXT_CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card, .gh-editor-feature-image-container, .gh-editor-feature-image";
 const ARTICLE_IMAGE_CARD_SELECTORS = '[data-kg-card="image"], .kg-image-card';
@@ -70,7 +85,7 @@ function scanUnsplashImagesInNode(node) {
 
 let manifestVersion = "unknown";
 try {
-  manifestVersion = (globalThis.browser ?? globalThis.chrome)?.runtime?.getManifest?.().version ?? "unknown";
+  manifestVersion = EXTENSION_API?.runtime?.getManifest?.().version ?? "unknown";
 } catch (error) {
   console.warn(`${EXTENSION_LOG_PREFIX} runtime unavailable while reading manifest version`, error);
 }
@@ -183,7 +198,7 @@ function tryOpenContextEditorWithRetry(imageSrc, attempts = 12, delayMs = 50) {
 }
 
 try {
-  (globalThis.browser ?? globalThis.chrome).runtime.onMessage.addListener((message) => {
+  EXTENSION_API?.runtime?.onMessage?.addListener?.((message) => {
     if (message?.type !== "OPEN_EDITOR_FROM_CONTEXT") return;
     const contextSrc = globalThis.__ghostImageEditorContextSrc || globalThis.__ghostImageEditorContextImage?.currentSrc || globalThis.__ghostImageEditorContextImage?.src || "";
     const imageSrc = message.imageSrc || contextSrc;
