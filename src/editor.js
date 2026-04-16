@@ -199,8 +199,20 @@ function getFormatLabel(valueOrMimeType) {
   return format === "jpg" ? "JPG" : format.toUpperCase();
 }
 
-function buildSummaryText(originalDetails, newDetails) {
-  return `${t("original", "Original")}: ${formatDimensions(originalDetails.width, originalDetails.height)}, ${originalDetails.format}, ${originalDetails.size} - ${t("new", "New")}: ${formatDimensions(newDetails.width, newDetails.height)}, ${newDetails.format}, ${newDetails.size}`;
+function buildOutputFilename(originalName, mimeTypeOrFormat = DEFAULT_OUTPUT_MIME) {
+  const basename = String(originalName || "image").replace(/\.[^.]+$/, "") || "image";
+  const extension = inferExtensionFromMimeType(mimeTypeOrFormat);
+  return `${basename}.${extension}`;
+}
+
+function buildSummaryText(originalDetails, newDetails, outputFileName = "") {
+  const newSummaryParts = [formatDimensions(newDetails.width, newDetails.height)];
+  if (outputFileName) {
+    newSummaryParts.push(outputFileName);
+  }
+  newSummaryParts.push(newDetails.format, newDetails.size);
+
+  return `${t("original", "Original")}: ${formatDimensions(originalDetails.width, originalDetails.height)}, ${originalDetails.format}, ${originalDetails.size} - ${t("new", "New")}: ${newSummaryParts.join(", ")}`;
 }
 
 function getAspectRatioPreset(presetId) {
@@ -259,6 +271,7 @@ function createModal(imageSrc, options = {}) {
   const {
     mode = "upload",
     fileName = "image",
+    initialOrientation = DEFAULT_ORIENTATION,
     originalWidth = 0,
     originalHeight = 0,
     originalSize = 0,
@@ -277,7 +290,8 @@ function createModal(imageSrc, options = {}) {
       height: originalHeight,
       format: getFormatLabel(DEFAULT_OUTPUT_FORMAT),
       size: "–"
-    }
+    },
+    buildOutputFilename(fileName, DEFAULT_OUTPUT_FORMAT)
   );
 
   const modal = document.createElement("div");
@@ -289,7 +303,6 @@ function createModal(imageSrc, options = {}) {
         <div class="editor-header-copy">
           <h2 class="editor-title">${t("imageEditor", "Image editor")}</h2>
         </div>
-        <span class="editor-file-pill" title="${fileName}">${fileName}</span>
       </div>
       <div class="editor-toolbar">
         <div class="editor-control-group">
@@ -305,8 +318,8 @@ function createModal(imageSrc, options = {}) {
         <div class="editor-control-group">
           <span class="editor-control-label">${t("orientation", "Orientation")}</span>
           <div class="editor-chip-row">
-            <button type="button" class="editor-chip-button is-active" data-orientation="landscape" aria-pressed="true">${t("landscape", "Landscape")}</button>
-            <button type="button" class="editor-chip-button" data-orientation="portrait" aria-pressed="false">${t("portrait", "Portrait")}</button>
+            <button type="button" class="editor-chip-button${initialOrientation === "landscape" ? " is-active" : ""}" data-orientation="landscape" aria-pressed="${String(initialOrientation === "landscape")}">${t("landscape", "Landscape")}</button>
+            <button type="button" class="editor-chip-button${initialOrientation === "portrait" ? " is-active" : ""}" data-orientation="portrait" aria-pressed="${String(initialOrientation === "portrait")}">${t("portrait", "Portrait")}</button>
           </div>
         </div>
         <div class="editor-control-group editor-control-group--size">
@@ -348,7 +361,7 @@ function createModal(imageSrc, options = {}) {
         </div>
       </div>
       <div class="editor-footer">
-        <p class="editor-summary" data-value-summary>${initialSummary}</p>
+        <p class="editor-summary" data-value-summary></p>
         <div class="editor-controls">
           <button type="button" data-action="cancel">${t("cancel", "Cancel")}</button>
           <button type="button" data-action="apply">${applyLabel}</button>
@@ -358,6 +371,10 @@ function createModal(imageSrc, options = {}) {
   `;
 
   document.body.appendChild(modal);
+  const summaryValue = modal.querySelector('[data-value-summary]');
+  if (summaryValue) {
+    summaryValue.textContent = initialSummary;
+  }
 
   return {
     modal,
@@ -369,7 +386,7 @@ function createModal(imageSrc, options = {}) {
     formatInputs: Array.from(modal.querySelectorAll('[data-setting="format"]')),
     ratioButtons: Array.from(modal.querySelectorAll('[data-ratio-preset]')),
     orientationButtons: Array.from(modal.querySelectorAll('[data-orientation]')),
-    summaryValue: modal.querySelector('[data-value-summary]')
+    summaryValue
   };
 }
 
@@ -424,9 +441,17 @@ function isLikelyFeatureImageInput(input) {
   return Boolean(input.closest(FEATURE_IMAGE_SELECTORS));
 }
 
+function isCardToolbarInput(input) {
+  return Boolean(input.closest(CARD_TOOLBAR_SELECTOR));
+}
+
 function isLikelyAppendUploader(input) {
   const inputName = (input.getAttribute("name") || "").toLowerCase();
-  return input.multiple || inputName === "image-input";
+  if (input.multiple) return true;
+  if (inputName !== "image-input") return false;
+  if (isCardToolbarInput(input)) return false;
+  if (input.closest(CARD_SELECTORS)) return false;
+  return true;
 }
 
 function getPreferredContextRoot(contextImage) {
@@ -436,8 +461,22 @@ function getPreferredContextRoot(contextImage) {
 
 function activateContextCard(contextImage) {
   if (!(contextImage instanceof HTMLElement)) return;
-  const card = contextImage.closest(CARD_SELECTORS) || contextImage;
-  card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  const candidateTargets = [
+    contextImage,
+    contextImage.closest('[data-koenig-dnd-container="true"]'),
+    contextImage.closest("figure"),
+    contextImage.closest(CARD_SELECTORS)
+  ];
+  const seen = new Set();
+
+  candidateTargets.forEach((target) => {
+    if (!(target instanceof HTMLElement) || seen.has(target)) return;
+    seen.add(target);
+    target.focus?.({ preventScroll: true });
+    target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+    target.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+  });
 }
 
 
@@ -454,7 +493,50 @@ function findCaptionEditor(container) {
   return null;
 }
 
-function findCardImageInput(contextCard, contextKind = "card") {
+function isSameCard(a, b) {
+  if (!(a instanceof Element) || !(b instanceof Element)) return false;
+  return a === b || a.contains(b) || b.contains(a);
+}
+
+function getImageSource(image) {
+  if (!(image instanceof HTMLImageElement)) return "";
+  return image.currentSrc || image.getAttribute("src") || "";
+}
+
+function cardMatchesContext(candidateCard, contextCard = null, contextSourceSrc = "") {
+  if (!(candidateCard instanceof Element)) return false;
+  if (contextCard instanceof Element && isSameCard(candidateCard, contextCard)) {
+    return true;
+  }
+
+  if (!contextSourceSrc) return false;
+
+  return Array.from(candidateCard.querySelectorAll("img[src], img[currentSrc]")).some((image) => {
+    return getImageSource(image) === contextSourceSrc;
+  });
+}
+
+function findSharedCardToolbarInput(contextCard, contextSourceSrc = "", contextKind = "card") {
+  if (contextKind === "feature") return null;
+
+  const selectedCards = Array.from(document.querySelectorAll('[data-kg-card="image"][data-kg-card-selected="true"], .kg-image-card[data-kg-card-selected="true"]'));
+  const selectedContextCard = selectedCards.find((candidate) => cardMatchesContext(candidate, contextCard, contextSourceSrc))
+    || (!(contextCard instanceof Element) && !contextSourceSrc ? selectedCards[0] : null);
+  if (!(selectedContextCard instanceof Element)) {
+    debugLog("no selected body image card matched current context");
+    return null;
+  }
+
+  const toolbarInputs = Array.from(document.querySelectorAll(`${CARD_TOOLBAR_SELECTOR} input[type="file"][name="image-input"], ${CARD_TOOLBAR_SELECTOR} input[type="file"]`))
+    .filter(isViableImageInput);
+  const toolbarInput = toolbarInputs.find((input) => !isLikelyAppendUploader(input)) || toolbarInputs[0] || null;
+  if (toolbarInput) {
+    debugLog("selected shared card toolbar input", { input: describeInput(toolbarInput) });
+  }
+  return toolbarInput;
+}
+
+function findCardImageInput(contextCard, contextKind = "card", contextSourceSrc = "") {
   if (!(contextCard instanceof Element)) return null;
 
   const toolbarInput = contextCard.querySelector(`${CARD_TOOLBAR_SELECTOR} input[type="file"][name="image-input"]`);
@@ -470,6 +552,11 @@ function findCardImageInput(contextCard, contextKind = "card") {
   if (isFeatureCard && featureInput && isViableImageInput(featureInput)) {
     debugLog("selected feature image input", { input: describeInput(featureInput) });
     return featureInput;
+  }
+
+  const sharedToolbarInput = findSharedCardToolbarInput(contextCard, contextSourceSrc, contextKind);
+  if (sharedToolbarInput) {
+    return sharedToolbarInput;
   }
 
   const anyLocal = contextCard.querySelector('input[type="file"][name="image-input"], input[type="file"]');
@@ -541,11 +628,16 @@ function resolveLiveContextCard(contextCard, contextImage, contextKind = "card",
   return document.querySelector('[data-kg-card="image"][data-kg-card-selected="true"], .kg-image-card, [data-kg-card="image"]') || null;
 }
 
-function findBestGhostImageInput(contextImage, contextCard = null, contextKind = "card") {
+function findBestGhostImageInput(contextImage, contextCard = null, contextKind = "card", contextSourceSrc = "") {
   const allCandidates = Array.from(document.querySelectorAll('input[type="file"]')).filter(isViableImageInput);
   if (!allCandidates.length) {
     debugLog("no viable file inputs found in document");
     return null;
+  }
+
+  const sharedToolbarInput = findSharedCardToolbarInput(contextCard, contextSourceSrc, contextKind);
+  if (sharedToolbarInput) {
+    return sharedToolbarInput;
   }
 
   const contextRoot = getPreferredContextRoot(contextImage);
@@ -779,6 +871,7 @@ function fetchImageFromBackground(imageSrc) {
 
 async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null, contextCard = null, contextKind = "card", contextSourceSrc = "", sourceImageUrl = "" }) {
   const originalDimensions = await getImageDimensionsFromElement(imageSrc, contextImage);
+  const initialOrientation = originalDimensions.height > originalDimensions.width ? "portrait" : DEFAULT_ORIENTATION;
   const {
     modal,
     image,
@@ -793,6 +886,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
   } = createModal(imageSrc, {
     mode,
     fileName: originalFile.name,
+    initialOrientation,
     originalWidth: originalDimensions.width,
     originalHeight: originalDimensions.height,
     originalSize: originalFile.size,
@@ -805,7 +899,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     size: formatBytes(originalFile.size)
   };
   let selectedRatioPreset = DEFAULT_RATIO_PRESET_ID;
-  let selectedOrientation = DEFAULT_ORIENTATION;
+  let selectedOrientation = initialOrientation;
   let previewVersion = 0;
 
   const cropper = new Cropper(image, {
@@ -846,7 +940,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
       height: dimensions.height,
       format: getFormatLabel(mimeType),
       size: formatBytes(outputFile?.size || 0)
-    });
+    }, outputFile?.name || buildOutputFilename(originalFile.name, mimeType));
   }
 
   function cleanup() {
@@ -880,11 +974,11 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     const captionState = getCaptionState(initialCard);
 
     activateContextCard(contextImage);
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 120));
 
     const liveCard = resolveLiveContextCard(contextCard, contextImage, contextKind, contextSourceSrc);
-    const strictCardInput = findCardImageInput(liveCard, contextKind);
-    const ghostInput = strictCardInput || findBestGhostImageInput(contextImage, liveCard, contextKind);
+    const strictCardInput = findCardImageInput(liveCard, contextKind, contextSourceSrc);
+    const ghostInput = strictCardInput || findBestGhostImageInput(contextImage, liveCard, contextKind, contextSourceSrc);
     debugLog("context apply input resolution", {
       strictCardInput: describeInput(strictCardInput),
       selectedInput: describeInput(ghostInput),
