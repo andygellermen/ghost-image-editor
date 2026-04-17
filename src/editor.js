@@ -24,8 +24,9 @@ const EXTENSION_API = resolveExtensionApi();
 const MODAL_ID = "ghost-image-editor-modal";
 const DEFAULT_OUTPUT_MIME = "image/webp";
 const DEFAULT_OUTPUT_FORMAT = "webp";
-const DEFAULT_RATIO_PRESET_ID = "16:9";
+const DEFAULT_RATIO_PRESET_ID = "free";
 const DEFAULT_ORIENTATION = "landscape";
+const DEFAULT_MAX_OUTPUT_DIMENSION = 1024;
 const OUTPUT_FORMATS = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -205,43 +206,28 @@ function buildOutputFilename(originalName, mimeTypeOrFormat = DEFAULT_OUTPUT_MIM
   return `${basename}.${extension}`;
 }
 
-function createSummaryPill(label, rows = [], accent = false) {
-  const pill = document.createElement("div");
-  pill.className = `editor-summary-pill${accent ? " editor-summary-pill--accent" : ""}`;
-
-  const labelElement = document.createElement("span");
-  labelElement.className = "editor-summary-label";
-  labelElement.textContent = label;
-  pill.appendChild(labelElement);
-
-  const body = document.createElement("div");
-  body.className = "editor-summary-body";
-  rows.filter(Boolean).forEach((row) => {
-    const line = document.createElement("span");
-    line.className = `editor-summary-line editor-summary-line--${row.kind || "meta"}`;
-    line.textContent = row.text;
-    body.appendChild(line);
-  });
-  pill.appendChild(body);
-
-  return pill;
+function formatSummaryDimensions(width, height) {
+  return `${formatDimensions(width, height)}px`;
 }
 
 function renderSummary(container, originalDetails, newDetails, outputFileName = "") {
   if (!(container instanceof HTMLElement)) return;
 
   container.textContent = "";
-  container.append(
-    createSummaryPill(t("original", "Original"), [
-      { kind: "primary", text: formatDimensions(originalDetails.width, originalDetails.height) },
-      { kind: "meta", text: `${originalDetails.format}, ${originalDetails.size}` }
-    ]),
-    createSummaryPill(t("new", "New"), [
-      { kind: "primary", text: formatDimensions(newDetails.width, newDetails.height) },
-      outputFileName ? { kind: "filename", text: outputFileName } : null,
-      { kind: "meta", text: `${newDetails.format}, ${newDetails.size}` }
-    ], true)
-  );
+
+  const pill = document.createElement("div");
+  pill.className = "editor-summary-pill";
+
+  const originalLine = document.createElement("span");
+  originalLine.className = "editor-summary-line";
+  originalLine.textContent = `${t("original", "Original")}: ${formatSummaryDimensions(originalDetails.width, originalDetails.height)}, ${originalDetails.format}, ${originalDetails.size}`;
+
+  const newLine = document.createElement("span");
+  newLine.className = "editor-summary-line";
+  newLine.textContent = `${t("new", "New")}: ${formatSummaryDimensions(newDetails.width, newDetails.height)}, ${newDetails.format}, ${newDetails.size}`;
+
+  pill.append(originalLine, newLine);
+  container.appendChild(pill);
 }
 
 function getAspectRatioPreset(presetId) {
@@ -294,6 +280,24 @@ function fitCropBoxToAspectRatio(cropper, aspectRatio) {
   });
 }
 
+function getInitialDimensionOverrides(width, height, maxDimension = DEFAULT_MAX_OUTPUT_DIMENSION) {
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    return { widthValue: "", heightValue: "" };
+  }
+
+  const normalizedWidth = Math.max(1, Math.round(width));
+  const normalizedHeight = Math.max(1, Math.round(height));
+  if (normalizedWidth <= maxDimension && normalizedHeight <= maxDimension) {
+    return { widthValue: "", heightValue: "" };
+  }
+
+  if (normalizedWidth >= normalizedHeight) {
+    return { widthValue: String(maxDimension), heightValue: "" };
+  }
+
+  return { widthValue: "", heightValue: String(maxDimension) };
+}
+
 function createModal(imageSrc, options = {}) {
   removeModal();
 
@@ -313,11 +317,6 @@ function createModal(imageSrc, options = {}) {
   modal.className = "ghost-image-editor-modal";
   modal.innerHTML = `
     <div class="editor-box" role="dialog" aria-modal="true" aria-label="${t("imageEditor", "Image editor")}">
-      <div class="editor-header">
-        <div class="editor-header-copy">
-          <h2 class="editor-title">${t("imageEditor", "Image editor")}</h2>
-        </div>
-      </div>
       <div class="editor-toolbar">
         <div class="editor-toolbar-primary">
           <div class="editor-control-group">
@@ -337,8 +336,20 @@ function createModal(imageSrc, options = {}) {
               <button type="button" class="editor-chip-button${initialOrientation === "portrait" ? " is-active" : ""}" data-orientation="portrait" aria-pressed="${String(initialOrientation === "portrait")}">${t("portrait", "Portrait")}</button>
             </div>
           </div>
+          <div class="editor-control-group editor-control-group--size">
+            <span class="editor-control-label">${t("dimensions", "Size")}</span>
+            <div class="editor-dimensions">
+              <label class="editor-dimension-field">
+                <span>${t("width", "Width")}</span>
+                <input type="number" min="1" step="1" inputmode="numeric" data-setting="width" placeholder="${t("auto", "Auto")}">
+              </label>
+              <label class="editor-dimension-field">
+                <span>${t("height", "Height")}</span>
+                <input type="number" min="1" step="1" inputmode="numeric" data-setting="height" placeholder="${t("auto", "Auto")}">
+              </label>
+            </div>
+          </div>
         </div>
-        <div class="editor-toolbar-divider" aria-hidden="true"></div>
         <div class="editor-toolbar-secondary">
           <fieldset class="editor-control-group editor-control-group--format">
             <legend class="editor-control-label">${t("format", "Format")}</legend>
@@ -357,18 +368,8 @@ function createModal(imageSrc, options = {}) {
               `).join("")}
             </div>
           </fieldset>
-          <div class="editor-control-group editor-control-group--size">
-            <span class="editor-control-label">${t("dimensions", "Size")}</span>
-            <div class="editor-dimensions">
-              <label class="editor-dimension-field">
-                <span>${t("width", "Width")}</span>
-                <input type="number" min="1" step="1" inputmode="numeric" data-setting="width" placeholder="${t("auto", "Auto")}">
-              </label>
-              <label class="editor-dimension-field">
-                <span>${t("height", "Height")}</span>
-                <input type="number" min="1" step="1" inputmode="numeric" data-setting="height" placeholder="${t("auto", "Auto")}">
-              </label>
-            </div>
+          <div class="editor-toolbar-file" data-value-file title="${buildOutputFilename(fileName, DEFAULT_OUTPUT_FORMAT)}">
+            ${buildOutputFilename(fileName, DEFAULT_OUTPUT_FORMAT)}
           </div>
         </div>
       </div>
@@ -418,6 +419,7 @@ function createModal(imageSrc, options = {}) {
     formatInputs: Array.from(modal.querySelectorAll('[data-setting="format"]')),
     ratioButtons: Array.from(modal.querySelectorAll('[data-ratio-preset]')),
     orientationButtons: Array.from(modal.querySelectorAll('[data-orientation]')),
+    fileValue: modal.querySelector('[data-value-file]'),
     summaryValue
   };
 }
@@ -904,6 +906,10 @@ function fetchImageFromBackground(imageSrc) {
 async function launchEditor({ imageSrc, originalFile, input = null, mode = "upload", contextImage = null, contextCard = null, contextKind = "card", contextSourceSrc = "", sourceImageUrl = "" }) {
   const originalDimensions = await getImageDimensionsFromElement(imageSrc, contextImage);
   const initialOrientation = originalDimensions.height > originalDimensions.width ? "portrait" : DEFAULT_ORIENTATION;
+  const { widthValue: initialWidthValue, heightValue: initialHeightValue } = getInitialDimensionOverrides(
+    originalDimensions.width,
+    originalDimensions.height
+  );
   const {
     modal,
     image,
@@ -914,6 +920,7 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     formatInputs,
     ratioButtons,
     orientationButtons,
+    fileValue,
     summaryValue
   } = createModal(imageSrc, {
     mode,
@@ -933,6 +940,9 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
   let selectedRatioPreset = DEFAULT_RATIO_PRESET_ID;
   let selectedOrientation = initialOrientation;
   let previewVersion = 0;
+
+  widthInput.value = initialWidthValue;
+  heightInput.value = initialHeightValue;
 
   const cropper = new Cropper(image, {
     viewMode: 1,
@@ -967,12 +977,18 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
       return;
     }
 
+    const outputFileName = outputFile?.name || buildOutputFilename(originalFile.name, mimeType);
+    if (fileValue) {
+      fileValue.textContent = outputFileName;
+      fileValue.title = outputFileName;
+    }
+
     renderSummary(summaryValue, originalSummary, {
       width: dimensions.width,
       height: dimensions.height,
       format: getFormatLabel(mimeType),
       size: formatBytes(outputFile?.size || 0)
-    }, outputFile?.name || buildOutputFilename(originalFile.name, mimeType));
+    }, outputFileName);
   }
 
   function cleanup() {

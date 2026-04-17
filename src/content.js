@@ -56,6 +56,15 @@ function isArticleImageCandidate(image) {
   return Boolean(image.closest(ARTICLE_IMAGE_CARD_SELECTORS));
 }
 
+function isFeatureImageCandidate(image) {
+  if (!(image instanceof HTMLImageElement)) return false;
+  return Boolean(image.closest(FEATURE_IMAGE_SELECTORS));
+}
+
+function isEditableImageCandidate(image) {
+  return isFeatureImageCandidate(image) || isArticleImageCandidate(image);
+}
+
 function clearRememberedContext() {
   globalThis.__ghostImageEditorContextImage = null;
   globalThis.__ghostImageEditorContextCard = null;
@@ -153,6 +162,16 @@ function rememberContextImageTarget(event) {
 }
 
 document.addEventListener("contextmenu", rememberContextImageTarget, true);
+document.addEventListener("click", rememberContextImageTarget, true);
+document.addEventListener("dblclick", (event) => {
+  const target = findContextImageFromTarget(event.target);
+  if (!isEditableImageCandidate(target)) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+  openEditorForRememberedImage(target);
+}, true);
 
 function findImageForToolbar(toolbar) {
   if (!(toolbar instanceof Element)) return null;
