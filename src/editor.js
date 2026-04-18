@@ -51,6 +51,13 @@ const CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koeni
 const CONTEXT_ROOT_SELECTORS = ".koenig-editor, .gh-koenig-editor, .kg-prose, .kg-card, main";
 const UNSPLASH_DOMAIN = "images.unsplash.com";
 const CARD_TOOLBAR_SELECTOR = "[data-kg-card-toolbar=\"image\"]";
+const GALLERY_IMAGE_TARGET_SELECTORS = '[data-testid="gallery-image"], [data-image="true"]';
+const SELECTED_BODY_CARD_SELECTORS = '[data-kg-card="image"][data-kg-card-selected="true"], .kg-image-card[data-kg-card-selected="true"], [data-kg-card="gallery"][data-kg-card-selected="true"]';
+const PAGE_BRIDGE_READY_ATTRIBUTE = "data-ghost-image-editor-page-bridge-ready";
+const PAGE_BRIDGE_REQUEST_TYPE = "ghost-image-editor:gallery-replace-request";
+const PAGE_BRIDGE_RESPONSE_TYPE = "ghost-image-editor:gallery-replace-response";
+const PAGE_BRIDGE_REQUEST_SOURCE = "ghost-image-editor-extension";
+const PAGE_BRIDGE_RESPONSE_SOURCE = "ghost-image-editor-page";
 const LOG_PREFIX = "[ghost-image-editor]";
 const DEBUG_QUERY_PARAM = "ghostImageEditorDebug";
 const DEBUG_STORAGE_KEY = "ghost-image-editor-debug";
@@ -116,6 +123,7 @@ const I18N_MESSAGES = {
     portrait: "Portrait",
     free: "Free",
     cancel: "Cancel",
+    help: "Help",
     original: "Original",
     new: "New",
     outputFile: "Output file",
@@ -142,6 +150,7 @@ const I18N_MESSAGES = {
     portrait: "Hochformat",
     free: "Frei",
     cancel: "Abbrechen",
+    help: "Hilfe",
     original: "Original",
     new: "Neu",
     outputFile: "Ausgabedatei",
@@ -200,8 +209,55 @@ function getFormatLabel(valueOrMimeType) {
   return format === "jpg" ? "JPG" : format.toUpperCase();
 }
 
-function buildOutputFilename(originalName, mimeTypeOrFormat = DEFAULT_OUTPUT_MIME) {
-  const basename = String(originalName || "image").replace(/\.[^.]+$/, "") || "image";
+function getBaseName(fileName) {
+  return String(fileName || "image").replace(/\.[^.]+$/, "") || "image";
+}
+
+function transliterateToAscii(value) {
+  const replacements = [
+    [/ß/g, "ss"],
+    [/ẞ/g, "SS"],
+    [/[äæ]/g, "ae"],
+    [/Ä/g, "Ae"],
+    [/Æ/g, "AE"],
+    [/[öœ]/g, "oe"],
+    [/Ö/g, "Oe"],
+    [/Œ/g, "OE"],
+    [/ü/g, "ue"],
+    [/Ü/g, "Ue"],
+    [/[ø]/g, "o"],
+    [/[Ø]/g, "O"],
+    [/[ð]/g, "d"],
+    [/[Ð]/g, "D"],
+    [/[þ]/g, "th"],
+    [/[Þ]/g, "TH"],
+    [/[ł]/g, "l"],
+    [/[Ł]/g, "L"]
+  ];
+
+  let normalized = String(value || "");
+  replacements.forEach(([pattern, replacement]) => {
+    normalized = normalized.replace(pattern, replacement);
+  });
+
+  return normalized
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]+/g, " ");
+}
+
+function sanitizeFileBasename(value, fallback = "image") {
+  const sanitized = transliterateToAscii(value)
+    .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[. ]+$/g, "");
+  return sanitized || fallback;
+}
+
+function buildOutputFilename(originalName, mimeTypeOrFormat = DEFAULT_OUTPUT_MIME, baseName = "") {
+  const fallbackBaseName = sanitizeFileBasename(getBaseName(originalName), "image");
+  const basename = sanitizeFileBasename(baseName || fallbackBaseName, fallbackBaseName);
   const extension = inferExtensionFromMimeType(mimeTypeOrFormat);
   return `${basename}.${extension}`;
 }
@@ -311,6 +367,7 @@ function createModal(imageSrc, options = {}) {
     originalFormat = DEFAULT_OUTPUT_FORMAT
   } = options;
   const applyLabel = mode === "context" ? t("applyToGhost", "Save to Ghost") : t("applyCrop", "Save to Ghost");
+  const defaultBaseName = sanitizeFileBasename(getBaseName(fileName), "image");
 
   const modal = document.createElement("div");
   modal.id = MODAL_ID;
@@ -368,8 +425,19 @@ function createModal(imageSrc, options = {}) {
               `).join("")}
             </div>
           </fieldset>
-          <div class="editor-toolbar-file" data-value-file title="${buildOutputFilename(fileName, DEFAULT_OUTPUT_FORMAT)}">
-            ${buildOutputFilename(fileName, DEFAULT_OUTPUT_FORMAT)}
+          <div class="editor-control-group editor-control-group--file">
+            <span class="editor-control-label">${t("outputFile", "Output file")}</span>
+            <label class="editor-toolbar-file" data-value-file title="${buildOutputFilename(fileName, DEFAULT_OUTPUT_FORMAT, defaultBaseName)}">
+              <input
+                type="text"
+                data-setting="file-name"
+                placeholder="${defaultBaseName}"
+                aria-label="${t("outputFile", "Output file")}"
+                spellcheck="false"
+                autocomplete="off"
+              >
+              <span class="editor-toolbar-file-extension" data-value-file-extension>.${inferExtensionFromMimeType(DEFAULT_OUTPUT_FORMAT)}</span>
+            </label>
           </div>
         </div>
       </div>
@@ -383,6 +451,7 @@ function createModal(imageSrc, options = {}) {
       <div class="editor-footer">
         <div class="editor-summary" data-value-summary></div>
         <div class="editor-controls">
+          <a href="https://geller.men/ghost-image-editor" target="_blank" rel="noopener noreferrer" data-action="help" aria-label="${t("help", "Help")}" title="${t("help", "Help")}">?</a>
           <button type="button" data-action="cancel">${t("cancel", "Cancel")}</button>
           <button type="button" data-action="apply">${applyLabel}</button>
         </div>
@@ -391,6 +460,12 @@ function createModal(imageSrc, options = {}) {
   `;
 
   document.body.appendChild(modal);
+  const fileNameInput = modal.querySelector('[data-setting="file-name"]');
+  const fileExtensionValue = modal.querySelector('[data-value-file-extension]');
+  const fileValue = modal.querySelector('[data-value-file]');
+  if (fileNameInput) {
+    fileNameInput.value = defaultBaseName;
+  }
   const summaryValue = modal.querySelector('[data-value-summary]');
   renderSummary(
     summaryValue,
@@ -406,7 +481,7 @@ function createModal(imageSrc, options = {}) {
       format: getFormatLabel(DEFAULT_OUTPUT_FORMAT),
       size: "–"
     },
-    buildOutputFilename(fileName, DEFAULT_OUTPUT_FORMAT)
+    buildOutputFilename(fileName, DEFAULT_OUTPUT_FORMAT, defaultBaseName)
   );
 
   return {
@@ -419,7 +494,9 @@ function createModal(imageSrc, options = {}) {
     formatInputs: Array.from(modal.querySelectorAll('[data-setting="format"]')),
     ratioButtons: Array.from(modal.querySelectorAll('[data-ratio-preset]')),
     orientationButtons: Array.from(modal.querySelectorAll('[data-orientation]')),
-    fileValue: modal.querySelector('[data-value-file]'),
+    fileNameInput,
+    fileExtensionValue,
+    fileValue,
     summaryValue
   };
 }
@@ -432,6 +509,127 @@ function updateInputWithFile(input, file) {
   input.files = transfer.files;
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error("Failed to read file as data URL"));
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function waitForPageBridge(attempts = 20, delayMs = 50) {
+  if (document.documentElement?.getAttribute(PAGE_BRIDGE_READY_ATTRIBUTE) === "1") {
+    return true;
+  }
+
+  for (let index = 0; index < attempts; index += 1) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    if (document.documentElement?.getAttribute(PAGE_BRIDGE_READY_ATTRIBUTE) === "1") {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function buildGalleryCardSourceSnapshot(contextCard) {
+  if (!(contextCard instanceof Element)) return [];
+  return Array.from(contextCard.querySelectorAll("img[src], img[currentSrc]"))
+    .map((image) => getImageSource(image))
+    .filter(Boolean);
+}
+
+function getGalleryDomIndex(contextCard, contextImage, contextSourceSrc = "") {
+  if (contextImage instanceof Element) {
+    const galleryElement = contextImage.closest('[data-gallery], [data-testid="gallery-container"]');
+    const galleryTarget = contextImage.closest(GALLERY_IMAGE_TARGET_SELECTORS);
+    if (galleryElement && galleryTarget) {
+      const galleryTargets = Array.from(galleryElement.querySelectorAll(GALLERY_IMAGE_TARGET_SELECTORS));
+      const domIndex = galleryTargets.indexOf(galleryTarget);
+      if (domIndex !== -1) return domIndex;
+    }
+  }
+
+  if (!(contextCard instanceof Element) || !contextSourceSrc) return -1;
+  const domSources = buildGalleryCardSourceSnapshot(contextCard);
+  return domSources.findIndex((source) => source === contextSourceSrc);
+}
+
+async function requestGalleryReplacement(payload) {
+  const bridgeReady = await waitForPageBridge();
+  if (!bridgeReady) {
+    debugLog("page bridge not ready for gallery replacement");
+    return { ok: false, error: "Page bridge not ready" };
+  }
+
+  const requestId = typeof crypto?.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `ghost-image-editor-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      resolve({ ok: false, error: "Gallery replacement timed out" });
+    }, 30000);
+
+    function cleanup() {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("message", handleMessage, false);
+    }
+
+    function handleMessage(event) {
+      if (event.source !== window) return;
+      const message = event.data;
+      if (!message || message.source !== PAGE_BRIDGE_RESPONSE_SOURCE || message.type !== PAGE_BRIDGE_RESPONSE_TYPE || message.requestId !== requestId) {
+        return;
+      }
+
+      cleanup();
+      resolve({
+        ok: Boolean(message.ok),
+        error: message.error || "",
+        payload: message.payload || {}
+      });
+    }
+
+    window.addEventListener("message", handleMessage, false);
+    window.postMessage({
+      source: PAGE_BRIDGE_REQUEST_SOURCE,
+      type: PAGE_BRIDGE_REQUEST_TYPE,
+      requestId,
+      payload
+    }, window.location.origin);
+  });
+}
+
+async function replaceGalleryImage(contextCard, contextImage, contextSourceSrc, outputFile, outputWidth, outputHeight) {
+  const fileDataUrl = await readFileAsDataUrl(outputFile);
+  const request = await requestGalleryReplacement({
+    cardImageSources: buildGalleryCardSourceSnapshot(contextCard),
+    contextSourceSrc: contextSourceSrc || getImageSource(contextImage),
+    fileDataUrl,
+    fileName: outputFile.name,
+    galleryDomIndex: getGalleryDomIndex(contextCard, contextImage, contextSourceSrc),
+    lastModified: outputFile.lastModified || Date.now(),
+    mimeType: outputFile.type || DEFAULT_OUTPUT_MIME,
+    outputHeight,
+    outputWidth
+  });
+
+  if (!request.ok) {
+    console.warn("[ghost-image-editor] gallery replacement failed", request.error || "Unknown gallery replacement error");
+    debugLog("gallery replacement bridge request failed", { error: request.error });
+    return false;
+  }
+
+  debugLog("gallery replacement bridge request succeeded", request.payload || {});
+  return true;
 }
 
 function isViableImageInput(input) {
@@ -479,6 +677,14 @@ function isCardToolbarInput(input) {
   return Boolean(input.closest(CARD_TOOLBAR_SELECTOR));
 }
 
+function isGalleryCard(element) {
+  return element instanceof Element && Boolean(element.closest('[data-kg-card="gallery"]'));
+}
+
+function isGalleryScopedInput(input) {
+  return input instanceof HTMLInputElement && isGalleryCard(input);
+}
+
 function isLikelyAppendUploader(input) {
   const inputName = (input.getAttribute("name") || "").toLowerCase();
   if (input.multiple) return true;
@@ -496,6 +702,7 @@ function getPreferredContextRoot(contextImage) {
 function activateContextCard(contextImage) {
   if (!(contextImage instanceof HTMLElement)) return;
   const candidateTargets = [
+    contextImage.closest(GALLERY_IMAGE_TARGET_SELECTORS),
     contextImage,
     contextImage.closest('[data-koenig-dnd-container="true"]'),
     contextImage.closest("figure"),
@@ -553,7 +760,7 @@ function cardMatchesContext(candidateCard, contextCard = null, contextSourceSrc 
 function findSharedCardToolbarInput(contextCard, contextSourceSrc = "", contextKind = "card") {
   if (contextKind === "feature") return null;
 
-  const selectedCards = Array.from(document.querySelectorAll('[data-kg-card="image"][data-kg-card-selected="true"], .kg-image-card[data-kg-card-selected="true"]'));
+  const selectedCards = Array.from(document.querySelectorAll(SELECTED_BODY_CARD_SELECTORS));
   const selectedContextCard = selectedCards.find((candidate) => cardMatchesContext(candidate, contextCard, contextSourceSrc))
     || (!(contextCard instanceof Element) && !contextSourceSrc ? selectedCards[0] : null);
   if (!(selectedContextCard instanceof Element)) {
@@ -593,8 +800,10 @@ function findCardImageInput(contextCard, contextKind = "card", contextSourceSrc 
     return sharedToolbarInput;
   }
 
-  const anyLocal = contextCard.querySelector('input[type="file"][name="image-input"], input[type="file"]');
-  if (anyLocal && isViableImageInput(anyLocal)) {
+  const localInputs = Array.from(contextCard.querySelectorAll('input[type="file"][name="image-input"], input[type="file"]'))
+    .filter(isViableImageInput);
+  const anyLocal = localInputs.find((input) => !isLikelyAppendUploader(input) && !input.multiple);
+  if (anyLocal) {
     debugLog("selected local card input fallback", { input: describeInput(anyLocal) });
     return anyLocal;
   }
@@ -659,7 +868,7 @@ function resolveLiveContextCard(contextCard, contextImage, contextKind = "card",
     return document.querySelector(".gh-editor-feature-image-container, .gh-editor-feature-image") || null;
   }
 
-  return document.querySelector('[data-kg-card="image"][data-kg-card-selected="true"], .kg-image-card, [data-kg-card="image"]') || null;
+  return document.querySelector(`${SELECTED_BODY_CARD_SELECTORS}, .kg-image-card, [data-kg-card="image"], [data-kg-card="gallery"]`) || null;
 }
 
 function findBestGhostImageInput(contextImage, contextCard = null, contextKind = "card", contextSourceSrc = "") {
@@ -699,7 +908,7 @@ function findBestGhostImageInput(contextImage, contextCard = null, contextKind =
 
     const localVisible = localInputs.find((input) => {
       const style = window.getComputedStyle(input);
-      return style.display !== "none" && style.visibility !== "hidden";
+      return style.display !== "none" && style.visibility !== "hidden" && !isLikelyAppendUploader(input);
     });
     if (localVisible) {
       return localVisible;
@@ -749,6 +958,11 @@ function findBestGhostImageInput(contextImage, contextCard = null, contextKind =
     return chosen;
   }
 
+  if (isLikelyAppendUploader(best)) {
+    debugLog("append uploader candidate rejected", { input: describeInput(best) });
+    return null;
+  }
+
   debugLog("selected best ghost input", { input: describeInput(best) });
   return best;
 }
@@ -787,7 +1001,7 @@ function downloadFile(file) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-function buildOutputFile(canvas, originalName, mimeType, outputWidth, outputHeight) {
+function buildOutputFile(canvas, originalName, mimeType, outputWidth, outputHeight, baseName = "") {
   const outputCanvas = document.createElement("canvas");
   outputCanvas.width = outputWidth;
   outputCanvas.height = outputHeight;
@@ -804,9 +1018,7 @@ function buildOutputFile(canvas, originalName, mimeType, outputWidth, outputHeig
         return;
       }
 
-      const basename = originalName.replace(/\.[^.]+$/, "") || "image";
-      const extension = inferExtensionFromMimeType(mimeType);
-      const filename = `${basename}.${extension}`;
+      const filename = buildOutputFilename(originalName, mimeType, baseName);
 
       resolve(new File([blob], filename, {
         type: mimeType,
@@ -920,6 +1132,8 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     formatInputs,
     ratioButtons,
     orientationButtons,
+    fileNameInput,
+    fileExtensionValue,
     fileValue,
     summaryValue
   } = createModal(imageSrc, {
@@ -965,6 +1179,10 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     setActiveButtons(orientationButtons, "orientation", selectedOrientation);
   }
 
+  function getResolvedOutputBaseName() {
+    return sanitizeFileBasename(fileNameInput?.value || getBaseName(originalFile.name), sanitizeFileBasename(getBaseName(originalFile.name), "image"));
+  }
+
   async function refreshSizePreview() {
     const requestVersion = ++previewVersion;
     const cropCanvas = cropper.getCroppedCanvas();
@@ -972,14 +1190,17 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     const dimensions = resolveOutputDimensions(cropCanvas.width, cropCanvas.height, widthInput.value, heightInput.value);
     const selectedFormat = getSelectedFormatValue(formatInputs);
     const mimeType = OUTPUT_FORMATS[selectedFormat] || DEFAULT_OUTPUT_MIME;
-    const outputFile = await buildOutputFile(cropCanvas, originalFile.name, mimeType, dimensions.width, dimensions.height);
+    const outputBaseName = getResolvedOutputBaseName();
+    const outputFile = await buildOutputFile(cropCanvas, originalFile.name, mimeType, dimensions.width, dimensions.height, outputBaseName);
     if (requestVersion !== previewVersion || !summaryValue) {
       return;
     }
 
-    const outputFileName = outputFile?.name || buildOutputFilename(originalFile.name, mimeType);
+    const outputFileName = outputFile?.name || buildOutputFilename(originalFile.name, mimeType, outputBaseName);
+    if (fileExtensionValue) {
+      fileExtensionValue.textContent = `.${inferExtensionFromMimeType(mimeType)}`;
+    }
     if (fileValue) {
-      fileValue.textContent = outputFileName;
       fileValue.title = outputFileName;
     }
 
@@ -1003,8 +1224,8 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     const outputHeight = dimensions.height;
     const selectedFormat = getSelectedFormatValue(formatInputs);
     const mimeType = OUTPUT_FORMATS[selectedFormat] || DEFAULT_OUTPUT_MIME;
-
-    const outputFile = await buildOutputFile(cropCanvas, originalFile.name, mimeType, outputWidth, outputHeight);
+    const outputBaseName = getResolvedOutputBaseName();
+    const outputFile = await buildOutputFile(cropCanvas, originalFile.name, mimeType, outputWidth, outputHeight, outputBaseName);
     cleanup();
 
     if (!outputFile) {
@@ -1025,6 +1246,14 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     await new Promise((resolve) => setTimeout(resolve, 120));
 
     const liveCard = resolveLiveContextCard(contextCard, contextImage, contextKind, contextSourceSrc);
+    if (isGalleryCard(liveCard)) {
+      const galleryReplaced = await replaceGalleryImage(liveCard, contextImage, contextSourceSrc, outputFile, outputWidth, outputHeight);
+      if (galleryReplaced) {
+        return;
+      }
+      debugLog("gallery replacement fell back to generic Ghost input resolution");
+    }
+
     const strictCardInput = findCardImageInput(liveCard, contextKind, contextSourceSrc);
     const ghostInput = strictCardInput || findBestGhostImageInput(contextImage, liveCard, contextKind, contextSourceSrc);
     debugLog("context apply input resolution", {
@@ -1054,6 +1283,17 @@ async function launchEditor({ imageSrc, originalFile, input = null, mode = "uplo
     refreshSizePreview();
   });
   heightInput.addEventListener("input", () => {
+    refreshSizePreview();
+  });
+  fileNameInput?.addEventListener("input", () => {
+    const sanitizedValue = getResolvedOutputBaseName();
+    if (fileNameInput.value !== sanitizedValue) {
+      fileNameInput.value = sanitizedValue;
+    }
+    refreshSizePreview();
+  });
+  fileNameInput?.addEventListener("blur", () => {
+    fileNameInput.value = getResolvedOutputBaseName();
     refreshSizePreview();
   });
   formatInputs.forEach((formatInput) => {

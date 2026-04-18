@@ -16,10 +16,14 @@ function resolveExtensionApi() {
 const EXTENSION_API = resolveExtensionApi();
 const EXTENSION_LOG_PREFIX = "[ghost-image-editor]";
 const CONTEXT_CARD_SELECTORS = ".kg-card, .kg-image-card, figure, [data-kg-card], .koenig-card, .gh-editor-feature-image-container, .gh-editor-feature-image";
-const ARTICLE_IMAGE_CARD_SELECTORS = '[data-kg-card="image"], .kg-image-card';
+const ARTICLE_IMAGE_CARD_SELECTORS = '[data-kg-card="image"], [data-kg-card="gallery"], .kg-image-card';
 const FEATURE_IMAGE_SELECTORS = ".gh-editor-feature-image-container, .gh-editor-feature-image";
 const IMAGE_TOOLBAR_SELECTOR = '[data-kg-card-toolbar="image"]';
+const GALLERY_IMAGE_TARGET_SELECTORS = '[data-testid="gallery-image"], [data-image="true"]';
+const SELECTED_BODY_CARD_SELECTORS = '[data-kg-card="image"][data-kg-card-selected="true"], .kg-image-card[data-kg-card-selected="true"], [data-kg-card="gallery"][data-kg-card-selected="true"]';
 const IMAGE_SELECTOR = "img[src], img[currentSrc]";
+const PAGE_BRIDGE_SCRIPT_ID = "ghost-image-editor-page-bridge";
+const PAGE_BRIDGE_READY_ATTRIBUTE = "data-ghost-image-editor-page-bridge-ready";
 
 const UNSPLASH_HOST = "images.unsplash.com";
 const autoOpenedUnsplashImages = new Set();
@@ -144,12 +148,54 @@ try {
 }
 console.info(`${EXTENSION_LOG_PREFIX} content script loaded v${manifestVersion}`);
 
+async function injectPageBridge() {
+  if (document.getElementById(PAGE_BRIDGE_SCRIPT_ID)) return;
+  if (document.documentElement?.getAttribute(PAGE_BRIDGE_READY_ATTRIBUTE) === "1") return;
+
+  try {
+    const response = await EXTENSION_API?.runtime?.sendMessage?.({ type: "INJECT_PAGE_BRIDGE" });
+    if (response?.ok) {
+      return;
+    }
+
+    if (response?.error) {
+      console.warn(`${EXTENSION_LOG_PREFIX} background page bridge injection failed`, response.error);
+    }
+  } catch (error) {
+    console.warn(`${EXTENSION_LOG_PREFIX} background page bridge injection unavailable`, error);
+  }
+
+  if (document.documentElement?.getAttribute(PAGE_BRIDGE_READY_ATTRIBUTE) === "1") return;
+
+  const bridgeUrl = EXTENSION_API?.runtime?.getURL?.("page-bridge.js");
+  if (!bridgeUrl) {
+    console.warn(`${EXTENSION_LOG_PREFIX} could not resolve page bridge URL`);
+    return;
+  }
+
+  const script = document.createElement("script");
+  script.id = PAGE_BRIDGE_SCRIPT_ID;
+  script.src = bridgeUrl;
+  script.async = false;
+  script.dataset.ghostImageEditorPageBridge = "true";
+  script.addEventListener("load", () => {
+    script.remove();
+  }, { once: true });
+  script.addEventListener("error", () => {
+    console.warn(`${EXTENSION_LOG_PREFIX} failed to inject page bridge`);
+    script.remove();
+  }, { once: true });
+
+  (document.head || document.documentElement).appendChild(script);
+}
+
 function findContextImageFromTarget(target) {
   if (target instanceof HTMLImageElement) return target;
   if (!(target instanceof Element)) return null;
 
-  const insideImage = target.closest("img");
-  if (insideImage instanceof HTMLImageElement) return insideImage;
+  const galleryTarget = target.closest(GALLERY_IMAGE_TARGET_SELECTORS);
+  const galleryImage = galleryTarget?.querySelector?.(IMAGE_SELECTOR);
+  if (galleryImage instanceof HTMLImageElement) return galleryImage;
 
   const container = target.closest(CONTEXT_CARD_SELECTORS);
   const containerImage = container?.querySelector?.("img[src], img[currentSrc]");
@@ -158,7 +204,9 @@ function findContextImageFromTarget(target) {
 
 function rememberContextImageTarget(event) {
   const target = findContextImageFromTarget(event.target);
-  rememberContextImage(target);
+  if (isEditableImageCandidate(target)) {
+    rememberContextImage(target);
+  }
 }
 
 document.addEventListener("contextmenu", rememberContextImageTarget, true);
@@ -176,15 +224,27 @@ document.addEventListener("dblclick", (event) => {
 function findImageForToolbar(toolbar) {
   if (!(toolbar instanceof Element)) return null;
 
+  const localGalleryTarget = toolbar.closest(GALLERY_IMAGE_TARGET_SELECTORS);
+  const localGalleryImage = localGalleryTarget?.querySelector?.(IMAGE_SELECTOR);
+  if (localGalleryImage instanceof HTMLImageElement) return localGalleryImage;
+
   const localCard = toolbar.closest(CONTEXT_CARD_SELECTORS);
+  const selectedCard = document.querySelector(`${SELECTED_BODY_CARD_SELECTORS}, ${FEATURE_IMAGE_SELECTORS}`);
+  const rememberedImage = globalThis.__ghostImageEditorContextImage;
+
+  if (rememberedImage instanceof HTMLImageElement && rememberedImage.isConnected) {
+    if ((localCard instanceof Element && localCard.contains(rememberedImage))
+      || (selectedCard instanceof Element && selectedCard.contains(rememberedImage))) {
+      return rememberedImage;
+    }
+  }
+
   const localImage = localCard?.querySelector?.(IMAGE_SELECTOR);
   if (localImage instanceof HTMLImageElement) return localImage;
 
-  const selectedCard = document.querySelector('[data-kg-card="image"][data-kg-card-selected="true"], .kg-image-card[data-kg-card-selected="true"], .gh-editor-feature-image-container, .gh-editor-feature-image');
   const selectedImage = selectedCard?.querySelector?.(IMAGE_SELECTOR);
   if (selectedImage instanceof HTMLImageElement) return selectedImage;
 
-  const rememberedImage = globalThis.__ghostImageEditorContextImage;
   if (rememberedImage instanceof HTMLImageElement && rememberedImage.isConnected) return rememberedImage;
 
   return null;
@@ -357,4 +417,5 @@ observer.observe(document.body, { childList: true, subtree: true });
 attachUploadListener();
 primeUnsplashImages();
 ensureInlineEditButtons();
+injectPageBridge();
 }

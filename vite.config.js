@@ -21,7 +21,8 @@ export default defineConfig({
       input: {
         content: 'src/content.js',
         editor: 'src/editor.js',
-        background: 'src/background.js'
+        background: 'src/background.js',
+        'page-bridge': 'src/page-bridge.js'
       },
       output: {
         entryFileNames: '[name].js',

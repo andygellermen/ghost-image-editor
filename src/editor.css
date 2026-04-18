@@ -31,6 +31,10 @@
   font: inherit;
 }
 
+.ghost-image-editor-modal a {
+  font: inherit;
+}
+
 .editor-box {
   width: min(1160px, 100%);
   max-height: calc(100vh - 48px);
@@ -79,28 +83,64 @@
   min-width: 0;
 }
 
-.editor-toolbar-file {
+.editor-control-group--file {
   margin-left: auto;
   align-self: flex-end;
+  flex: 1 1 280px;
   max-width: min(44%, 420px);
+}
+
+.editor-toolbar-file {
+  width: 100%;
   min-height: 40px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding: 0 18px;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 0 12px 0 16px;
   border: 1px solid var(--editor-border);
   border-radius: 999px;
   background: #ffffff;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.editor-toolbar-file:focus-within {
+  border-color: var(--editor-border-strong);
+  box-shadow: 0 0 0 3px rgba(16, 24, 40, 0.08);
+}
+
+.editor-toolbar-file input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent !important;
+  color: var(--editor-text) !important;
+  padding: 10px 0;
+  font-size: 12.5px;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.editor-toolbar-file input::placeholder {
+  color: #98a2b3 !important;
+}
+
+.editor-toolbar-file-extension {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(16, 24, 40, 0.1);
   color: var(--editor-muted);
   font-size: 12.5px;
   line-height: 1.15;
   letter-spacing: 0.01em;
   font-weight: 700;
-  text-align: right;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .ghost-image-editor-modal legend,
@@ -169,6 +209,7 @@ fieldset.editor-control-group {
 .editor-chip-button:focus-visible,
 .editor-chip-radio input:focus-visible + span,
 .editor-controls button:focus-visible,
+.editor-controls a:focus-visible,
 .editor-dimension-field input:focus-visible {
   outline: 3px solid rgba(16, 24, 40, 0.16);
   outline-offset: 2px;
@@ -339,7 +380,8 @@ fieldset.editor-control-group {
   flex-shrink: 0;
 }
 
-.editor-controls button {
+.editor-controls button,
+.editor-controls a {
   appearance: none;
   border: 1px solid var(--editor-border);
   background: #ffffff;
@@ -351,10 +393,15 @@ fieldset.editor-control-group {
   line-height: 1;
   font-weight: 700;
   cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease, background 140ms ease, color 140ms ease;
 }
 
-.editor-controls button:hover {
+.editor-controls button:hover,
+.editor-controls a:hover {
   transform: translateY(-1px);
   border-color: var(--editor-border-strong);
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.1);
@@ -365,6 +412,13 @@ fieldset.editor-control-group {
   color: #ffffff;
   border-color: #101828;
   box-shadow: 0 18px 30px rgba(16, 24, 40, 0.18);
+}
+
+.editor-controls a[data-action="help"] {
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
+  font-size: 18px;
 }
 
 @media (max-width: 900px) {
@@ -384,6 +438,11 @@ fieldset.editor-control-group {
 
   .editor-control-group--size {
     margin-left: 0;
+  }
+
+  .editor-control-group--file {
+    margin-left: 0;
+    max-width: 100%;
   }
 
   .editor-footer {
@@ -418,10 +477,7 @@ fieldset.editor-control-group {
   }
 
   .editor-toolbar-file {
-    max-width: 100%;
-    width: 100%;
-    justify-content: flex-start;
-    text-align: left;
+    gap: 10px;
   }
 
   .editor-dimensions {

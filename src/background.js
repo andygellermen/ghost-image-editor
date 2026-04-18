@@ -52,6 +52,35 @@ extensionApi.contextMenus.onClicked.addListener((info, tab) => {
 });
 
 extensionApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "INJECT_PAGE_BRIDGE") {
+    (async () => {
+      try {
+        const tabId = _sender?.tab?.id;
+        if (!tabId) {
+          sendResponse({ ok: false, error: "Missing tab ID for page bridge injection" });
+          return;
+        }
+
+        if (!extensionApi.scripting?.executeScript) {
+          sendResponse({ ok: false, error: "Scripting API unavailable" });
+          return;
+        }
+
+        await extensionApi.scripting.executeScript({
+          target: { tabId },
+          files: ["page-bridge.js"],
+          world: "MAIN"
+        });
+
+        sendResponse({ ok: true });
+      } catch (error) {
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    })();
+
+    return true;
+  }
+
   if (message?.type !== "FETCH_IMAGE_BLOB" || !message.imageSrc) {
     return undefined;
   }
